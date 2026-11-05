@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Setup guide · Tenvaultix 365 Health Check{% endblock %}
+{% block head %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+<section class="page-head on-dark">
+  <div class="wrap">
+    <span class="eyebrow">For the Tenvaultix team</span>
+    <h1>Setup guide</h1>
+    <p class="sub">Microsoft sign-in is {% if settings.microsoft_configured %}<strong>configured</strong>{% else %}<strong>not configured yet</strong>{% endif %} on this server.</p>
+  </div>
+</section>
+<div class="wrap narrow prose">
+  <h2>1. Register the app in Microsoft Entra</h2>
+  <ol>
+    <li>In your own Tenvaultix tenant, open Microsoft Entra admin center &gt; App registrations &gt; New registration.</li>
+    <li>Name: <code>Tenvaultix 365 Health Check</code>. Supported account types: <strong>Accounts in any organizational directory (multitenant)</strong>.</li>
+    <li>Redirect URIs (type <em>Web</em>):
+      <ul>
+        <li><code>{{ settings.url('/auth/callback') }}</code></li>
+        <li><code>{{ settings.url('/connect/callback') }}</code></li>
+      </ul>
+    </li>
+    <li>Under Certificates &amp; secrets, upload a certificate (recommended) or create a client secret.</li>
+    <li>Under API permissions, add the delegated permission <code>User.Read</code> and these <strong>application</strong> permissions for Microsoft Graph:</li>
+  </ol>
+  <div class="card table-wrap">
+    <table class="table">
+      <tbody>{% for name, why in permissions %}<tr><td class="perm-name">{{ name }}</td><td>{{ why }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <ol start="6">
+    <li>Under Branding &amp; properties, set the publisher domain, then complete <strong>publisher verification</strong> with your Microsoft partner account, so customers see a verified badge instead of "unverified".</li>
+  </ol>
+
+  <h2>2. Set environment variables</h2>
+  <div class="card table-wrap">
+    <table class="table">
+      <tbody>
+        <tr><td class="perm-name">TVX_CLIENT_ID</td><td>Application (client) ID</td></tr>
+        <tr><td class="perm-name">TVX_CERT_PATH + TVX_CERT_THUMBPRINT</td><td>Private key file and certificate thumbprint (or TVX_CLIENT_SECRET)</td></tr>
+        <tr><td class="perm-name">TVX_BASE_URL</td><td>Public address of this site, for example https://health.example.com</td></tr>
+        <tr><td class="perm-name">TVX_SESSION_SECRET</td><td>Long random string used to sign session cookies</td></tr>
+        <tr><td class="perm-name">TVX_CONTACT_EMAIL / TVX_BOOKING_URL</td><td>Where "Ask Tenvaultix to fix this" buttons go</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>The README in the repository has the full deployment steps.</p>
+</div>
+{% endblock %}

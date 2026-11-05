@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Tenvaultix 365 Health Check{% endblock %}</title>
+  <meta name="description" content="{% block description %}Weekly Microsoft 365 security and license check for small businesses, in plain English.{% endblock %}">
+  {% block head %}{% endblock %}
+  <link rel="icon" href="/static/favicon.png">
+  <link rel="stylesheet" href="/static/style.css?v=1">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/"><img src="/static/favicon.png" alt="" width="30" height="30"><span>Tenvaultix<small>365 Health Check</small></span></a>
+      <nav class="nav" aria-label="Main">
+        <a href="/#checks">What we check</a>
+        <a href="/#pricing">Pricing</a>
+        <a href="/demo">Sample report</a>
+        {% if user %}
+          <a href="/app">Dashboard</a>
+          <a href="/logout">Sign out</a>
+        {% else %}
+          <a href="/login">Sign in</a>
+          <a class="btn btn-sky btn-sm" href="/connect">Start free trial</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+  {% block banner %}{% endblock %}
+  {% if flash %}
+  <div class="wrap">
+    {% for f in flash %}<div class="flash {{ f.kind }}" role="status">{{ f.text }}</div>{% endfor %}
+  </div>
+  {% endif %}
+  <main>
+  {% block content %}{% endblock %}
+  </main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>© {{ year }} Tenvaultix · Securing Productivity. Powering Innovation.</p>
+      <div class="links">
+        <a href="/demo">Sample report</a>
+        <a href="/privacy">Privacy &amp; data</a>
+        {% if settings.contact_email %}<a href="mailto:{{ settings.contact_email }}">Contact</a>{% endif %}
+      </div>
+      <p class="small">Tenvaultix 365 Health Check is an independent service. Microsoft 365 is a trademark of Microsoft Corporation.</p>
+    </div>
+  </footer>
+  <script src="/static/app.js?v=1" defer></script>
+</body>
+</html>

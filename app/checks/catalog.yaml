@@ -1,0 +1,260 @@
+# The check library. Each check's wording, severity and fix steps live here; the logic that decides
+# pass / warn / fail is in rules.py under the same id. To add a check: add an entry here and a rule
+# with the same id in rules.py.
+#
+# severity: critical | high | medium | low | info (info checks are shown but not scored)
+
+categories:
+  - Sign-in & MFA
+  - Admin & apps
+  - Accounts & guests
+  - Email security
+  - Sharing
+  - Licenses & cost
+  - Devices
+  - Overview
+
+checks:
+  MFA-002:
+    title: MFA enforcement
+    category: Sign-in & MFA
+    severity: critical
+    why: >-
+      Setting up MFA isn't enough on its own: something has to require it when people sign in.
+      Without that, a stolen password is enough to get in, and people who never set up MFA are never asked to.
+    fix:
+      - "No Business Premium: turn on security defaults. In the Microsoft Entra admin center (entra.microsoft.com) go to Entra ID > Overview > Properties > Manage security defaults and choose Enabled."
+      - "Business Premium: create a Conditional Access policy for All users and All resources that requires multifactor authentication. Start it in report-only mode for a few days, then switch it on."
+      - "Exclude one emergency (break-glass) admin account, with a long password kept somewhere safe."
+    learn_more: https://learn.microsoft.com/entra/identity/conditional-access/policy-all-users-mfa-strength
+
+  MFA-001:
+    title: Staff without MFA
+    category: Sign-in & MFA
+    severity: high
+    why: >-
+      An account without MFA can be taken over with just a stolen or guessed password. Microsoft reports
+      that MFA stops more than 99% of account-takeover attacks.
+    fix:
+      - "Make sure MFA is enforced for everyone (see MFA enforcement), so people are prompted to set it up."
+      - "Ask each person listed to open aka.ms/mysecurityinfo and add the Microsoft Authenticator app."
+      - "Run a new scan to confirm everyone is covered."
+    learn_more: https://learn.microsoft.com/microsoft-365/admin/security-and-compliance/set-up-multi-factor-authentication
+
+  MFA-003:
+    title: Old sign-in methods (legacy authentication)
+    category: Sign-in & MFA
+    severity: high
+    why: >-
+      Old sign-in methods (IMAP, POP, basic SMTP and very old Office apps) can't do MFA, so attackers use them
+      to try stolen passwords. Microsoft sees most account-compromise attempts come through them.
+    fix:
+      - "Security defaults block old sign-in methods automatically."
+      - "With Business Premium, use the Conditional Access template 'Block legacy authentication' for all users."
+      - "Before switching it on, check the sign-in logs (filter Client app = legacy) for printers or scanners that still send email this way, and move them to a supported method."
+    learn_more: https://learn.microsoft.com/entra/identity/conditional-access/policy-block-legacy-authentication
+
+  ADM-001:
+    title: Admins without MFA
+    category: Admin & apps
+    severity: critical
+    why: >-
+      Admin accounts can read every mailbox, reset passwords and delete data. One stolen admin password
+      without MFA can mean losing control of the whole tenant.
+    fix:
+      - "Today: each admin listed signs in at aka.ms/mysecurityinfo and adds the Microsoft Authenticator app."
+      - "Require MFA for admins with security defaults or a Conditional Access policy, so it can't be skipped."
+      - "For admins, prefer phishing-resistant methods such as passkeys."
+    learn_more: https://learn.microsoft.com/entra/identity/role-based-access-control/best-practices
+
+  ADM-002:
+    title: Number of Global Administrators
+    category: Admin & apps
+    severity: medium
+    why: >-
+      A Global Administrator can do anything in your tenant. Too many means more accounts for attackers
+      to target; only one means nobody can step in if that person is away or locked out.
+    fix:
+      - "Keep two to four Global Administrators. Microsoft recommends fewer than five."
+      - "Give everyone else a smaller role, such as User Administrator or Exchange Administrator (Microsoft 365 admin center > Roles > Role assignments)."
+      - "Keep one emergency access account, not used day to day, with its password stored safely."
+    learn_more: https://learn.microsoft.com/entra/identity/role-based-access-control/security-emergency-access
+
+  ADM-003:
+    title: Staff approving outside apps
+    category: Admin & apps
+    severity: high
+    why: >-
+      In 'consent phishing', a fake app asks for permission to read someone's mailbox and files. If staff can
+      approve apps themselves, one click gives the attacker access, with no password needed.
+    fix:
+      - "Microsoft Entra admin center > Entra ID > Enterprise apps > Consent and permissions > User consent settings."
+      - "Choose 'Allow user consent for apps from verified publishers, for selected permissions', or 'Do not allow user consent'."
+      - "Turn on the admin consent workflow so staff can still request the apps they need."
+    learn_more: https://learn.microsoft.com/entra/identity/enterprise-apps/configure-user-consent
+
+  ADM-004:
+    title: Who can register apps
+    category: Admin & apps
+    severity: low
+    why: >-
+      By default any user can create app registrations in your tenant. Attackers who get into one account
+      can use them to keep hidden access.
+    fix:
+      - "Microsoft Entra admin center > Entra ID > Users > User settings: set 'Users can register applications' to No."
+      - "Give the Application Developer role to the few people who really need it."
+    learn_more: https://learn.microsoft.com/entra/identity/role-based-access-control/delegate-app-roles
+
+  ACC-001:
+    title: Inactive accounts
+    category: Accounts & guests
+    severity: medium
+    why: >-
+      Accounts nobody uses are ideal for attackers: nobody notices strange sign-ins, and they often belong to
+      people who have left the company.
+    fix:
+      - "Check each account listed with the person's manager."
+      - "For people who have left: block sign-in, convert the mailbox to a shared mailbox if you still need the email, then remove the license."
+    learn_more: https://learn.microsoft.com/entra/identity/monitoring-health/howto-manage-inactive-user-accounts
+
+  ACC-002:
+    title: Who can invite guests
+    category: Accounts & guests
+    severity: medium
+    why: >-
+      When anyone, including existing guests, can invite outsiders, nobody keeps track of who has access to
+      your Teams and files.
+    fix:
+      - "Microsoft Entra admin center > Entra ID > External Identities > External collaboration settings."
+      - "Under Guest invite settings, choose 'Member users and users assigned to specific admin roles can invite guest users' or stricter."
+    learn_more: https://learn.microsoft.com/entra/external-id/external-collaboration-settings-configure
+
+  ACC-003:
+    title: Old guest accounts
+    category: Accounts & guests
+    severity: low
+    plan_note: Needs Microsoft Entra ID P1 (included in Business Premium) to see guest sign-ins.
+    why: >-
+      Guests keep access to Teams and files until someone removes them. Guest accounts left over from
+      finished projects are a common cause of data leaks.
+    fix:
+      - "Remove the guests listed who no longer need access (Microsoft 365 admin center > Users > Guest users)."
+      - "Review guests every quarter. With Entra ID P2 you can automate this with access reviews."
+    learn_more: https://learn.microsoft.com/entra/identity/users/clean-up-stale-guest-accounts
+
+  EML-001:
+    title: SPF record
+    category: Email security
+    severity: high
+    why: >-
+      SPF tells other email servers which servers may send email for your domain. Without it, criminals can
+      send invoices and payment requests that look like they come from you.
+    fix:
+      - "Add one TXT record on your domain: v=spf1 include:spf.protection.outlook.com -all"
+      - "Add any other services that send email for you (website, newsletter or billing tool) to the same record. Have only one SPF record per domain."
+    learn_more: https://learn.microsoft.com/defender-office-365/email-authentication-spf-configure
+
+  EML-002:
+    title: DMARC policy
+    category: Email security
+    severity: high
+    why: >-
+      DMARC tells receivers what to do with email that fails SPF and DKIM: deliver it, send it to spam, or
+      reject it. Unless it's set to quarantine or reject, fake emails from your domain still reach inboxes.
+    fix:
+      - "Add a TXT record at _dmarc.<your domain>: v=DMARC1; p=none; rua=mailto:dmarc@<your domain> to start collecting reports."
+      - "After 2 to 4 weeks with no surprises in the reports, change p=none to p=quarantine, and later to p=reject."
+    learn_more: https://learn.microsoft.com/defender-office-365/email-authentication-dmarc-configure
+
+  EML-003:
+    title: DKIM signing
+    category: Email security
+    severity: medium
+    why: >-
+      DKIM adds a digital signature to every email you send, proving it really came from you and wasn't
+      changed on the way. Many receivers, including Gmail and Yahoo, expect it, and DMARC works best with it.
+    fix:
+      - "Microsoft Defender portal (security.microsoft.com) > Email & collaboration > Policies & rules > Threat policies > Email authentication settings > DKIM."
+      - "Select your domain, add the two CNAME records it shows to your DNS, then turn on signing for the domain."
+    learn_more: https://learn.microsoft.com/defender-office-365/email-authentication-dkim-configure
+
+  EML-004:
+    title: Email forwarded outside the company
+    category: Email security
+    severity: high
+    why: >-
+      A hidden inbox rule that forwards email outside the company is the most common sign of a hacked
+      mailbox. Attackers use it to copy invoices and payment emails, then send fake bank details.
+    fix:
+      - "Ask each person listed whether they created the rule. If not, treat the account as hacked: reset the password, sign out all sessions and check their MFA methods."
+      - "Delete rules that aren't needed."
+      - "Block automatic forwarding to outside addresses in the outbound spam policy (Microsoft Defender portal), allowing only people who really need it."
+    learn_more: https://learn.microsoft.com/defender-office-365/outbound-spam-policies-external-email-forwarding
+
+  SHR-001:
+    title: "'Anyone' sharing links"
+    category: Sharing
+    severity: medium
+    why: >-
+      'Anyone' links work without signing in. If a link is forwarded or posted by mistake, whoever has it can
+      open the file, and you can't see who did.
+    fix:
+      - "SharePoint admin center > Policies > Sharing: move the SharePoint and OneDrive slider down to 'New and existing guests', so outsiders must sign in."
+      - "If you really need Anyone links, make them expire after a few days."
+    learn_more: https://learn.microsoft.com/sharepoint/turn-external-sharing-on-or-off
+
+  LIC-001:
+    title: Unassigned paid licenses
+    category: Licenses & cost
+    severity: medium
+    why: You pay for every license you buy, whether or not it's assigned to anyone.
+    fix:
+      - "Give these licenses to new joiners before buying more."
+      - "Lower the license count in Microsoft 365 admin center > Billing > Your products. Annual plans can usually only be lowered at renewal, so set a reminder; monthly plans can be lowered any time."
+    learn_more: https://learn.microsoft.com/microsoft-365/admin/manage/assign-licenses-to-users
+
+  LIC-002:
+    title: Licenses on blocked accounts
+    category: Licenses & cost
+    severity: medium
+    why: >-
+      When someone leaves, their account is often blocked but the license stays assigned and keeps
+      costing money every month.
+    fix:
+      - "If you still need the person's email, convert the mailbox to a shared mailbox first. Shared mailboxes under 50 GB don't need a license."
+      - "Remove the license: Microsoft 365 admin center > Users > Active users > select the user > Licenses and apps."
+    learn_more: https://learn.microsoft.com/microsoft-365/admin/manage/assign-licenses-to-users
+
+  LIC-003:
+    title: Licenses on inactive people
+    category: Licenses & cost
+    severity: low
+    why: People who haven't used Microsoft 365 for 90 days probably don't need a paid license.
+    fix:
+      - "Confirm with their manager whether they still need access."
+      - "Remove the license, or move them to a cheaper plan such as Business Basic if they only need email and Teams."
+    learn_more: https://learn.microsoft.com/microsoft-365/admin/manage/assign-licenses-to-users
+
+  DEV-001:
+    title: Device compliance
+    category: Devices
+    severity: medium
+    plan_note: Needs Microsoft Intune (included in Business Premium).
+    why: >-
+      Laptops and phones that don't meet your rules (no encryption, missing updates, no PIN) can leak company
+      data if they're lost or hacked.
+    fix:
+      - "Intune admin center (intune.microsoft.com) > Devices: open each device listed to see which rule it fails."
+      - "Then require compliant devices in Conditional Access, so devices that fail can't open company data."
+    learn_more: https://learn.microsoft.com/mem/intune/protect/device-compliance-get-started
+
+  GEN-001:
+    title: Microsoft Secure Score
+    category: Overview
+    severity: info
+    why: >-
+      Microsoft Secure Score measures how many of Microsoft's recommended security settings you use. It's a
+      useful second opinion alongside this report.
+    fix:
+      - "Open security.microsoft.com/securescore and work through the recommended actions, starting with the highest impact."
+    learn_more: https://learn.microsoft.com/defender-xdr/microsoft-secure-score

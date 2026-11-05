@@ -1,0 +1,68 @@
+{% macro ring(score, grade, size=132) -%}
+<svg class="ring grade-{{ grade|lower if grade and grade != '-' else 'none' }}" width="{{ size }}" height="{{ size }}" viewBox="0 0 120 120" role="img" aria-label="Health score {{ score if score is not none else 'not available' }} out of 100, grade {{ grade }}">
+  <circle class="ring-track" cx="60" cy="60" r="52"/>
+  {% if score is not none %}<circle class="ring-value" cx="60" cy="60" r="52" stroke-dasharray="{{ '%.1f'|format(score * 3.267) }} 326.7" transform="rotate(-90 60 60)"/>{% endif %}
+  <text x="60" y="62" text-anchor="middle" class="ring-score">{{ score if score is not none else '–' }}</text>
+  <text x="60" y="82" text-anchor="middle" class="ring-label">out of 100</text>
+</svg>
+{%- endmacro %}
+
+{% macro bar(score, grade) -%}
+<svg class="bar" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true">
+  <rect class="track" x="0" y="0" width="100" height="6" rx="3"/>
+  {% if score is not none %}<rect class="fill grade-{{ grade|lower }}" x="0" y="0" width="{{ [score, 2]|max }}" height="6" rx="3"/>{% endif %}
+</svg>
+{%- endmacro %}
+
+{% macro status_icon(status) -%}
+<span class="s-icon" aria-hidden="true">
+{%- if status == 'pass' -%}
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>
+{%- elif status == 'fail' -%}
+<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+{%- elif status == 'warn' -%}
+<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="7" y="2.5" width="2.2" height="7.5" rx="1.1"/><circle cx="8.1" cy="12.8" r="1.4"/></svg>
+{%- elif status == 'info' -%}
+<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3.6" r="1.4"/><rect x="6.9" y="6.2" width="2.2" height="7.4" rx="1.1"/></svg>
+{%- else -%}
+<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3.5 8h9"/></svg>
+{%- endif -%}
+</span>
+{%- endmacro %}
+
+{% macro finding(r, open=false, show_cta=true, settings=None) -%}
+{%- set STATUS_LABEL = {'fail': 'Problem', 'warn': 'Needs attention', 'pass': 'Passed', 'info': 'Info', 'not_available': 'Not checked', 'error': 'Error'} -%}
+<details class="finding s-{{ r.status }}" id="{{ r.id }}"{% if open %} open{% endif %}>
+  <summary>
+    {{ status_icon(r.status) }}
+    <div>
+      <div class="f-title">{{ r.title }}</div>
+      <div class="f-summary">{{ r.summary }}</div>
+    </div>
+    <div class="f-tags">
+      {% if r.waste %}<span class="chip money">≈ {{ r.waste|money }}/mo</span>{% endif %}
+      {% if r.status in ('fail', 'warn') and r.severity != 'info' %}<span class="chip sev-{{ r.severity }}">{{ r.severity }}</span>{% endif %}
+      {% if r.status not in ('fail', 'warn') %}<span class="chip">{{ STATUS_LABEL[r.status] }}</span>{% endif %}
+    </div>
+  </summary>
+  <div class="f-body">
+    <h4>Why it matters</h4>
+    <p>{{ r.why }}</p>
+    {% if r.evidence %}
+    <h4>What we found{% if r.evidence_total > r.evidence|length %} (first {{ r.evidence|length }} of {{ r.evidence_total }}){% endif %}</h4>
+    <ul class="evidence">{% for e in r.evidence %}<li>{{ e }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if r.status != 'pass' %}
+    <h4>How to fix it</h4>
+    <ol>{% for step in r.fix %}<li>{{ step }}</li>{% endfor %}</ol>
+    {% endif %}
+    {% if r.plan_note and r.status == 'not_available' %}<p class="note">{{ r.plan_note }}</p>{% endif %}
+    <div class="f-actions">
+      {% if r.learn_more %}<a href="{{ r.learn_more }}" target="_blank" rel="noopener noreferrer">Microsoft's guide ↗</a>{% endif %}
+      {% if show_cta and r.status in ('fail', 'warn') and settings and (settings.booking_url or settings.contact_email) %}
+      <a class="btn btn-ghost btn-sm no-print" href="{{ settings.booking_url or ('mailto:' ~ settings.contact_email ~ '?subject=Help%20with%20' ~ r.title|urlencode) }}">Ask Tenvaultix to fix this</a>
+      {% endif %}
+    </div>
+  </div>
+</details>
+{%- endmacro %}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Connect Microsoft 365 · Tenvaultix{% endblock %}
+{% block content %}
+<section class="page-head on-dark">
+  <div class="wrap">
+    <span class="eyebrow">14-day free trial</span>
+    <h1>Connect your Microsoft 365</h1>
+    <p class="sub">Two minutes. Read-only. You can disconnect any time.</p>
+  </div>
+</section>
+
+<div class="wrap narrow">
+  {% if tenant and user %}
+  <div class="banner warn section-gap">
+    <p>Your company is already connected by {{ tenant.connected_by }}. Ask them to add {{ user.email }} under Team access on their dashboard.</p>
+  </div>
+  {% endif %}
+
+  <section class="report-section">
+    <div class="grid grid-3">
+      <div class="card"><div class="step-num">1</div><h3>Sign in</h3><p class="muted">Use your work Microsoft account.</p></div>
+      <div class="card"><div class="step-num">2</div><h3>Approve</h3><p class="muted">A Global Administrator approves read-only access on Microsoft's own screen.</p></div>
+      <div class="card"><div class="step-num">3</div><h3>Get your report</h3><p class="muted">Your first scan starts straight away.</p></div>
+    </div>
+  </section>
+
+  <section class="report-section">
+    <div class="card">
+      {% if not settings.microsoft_configured %}
+        <h3>Not available on this server yet</h3>
+        <p class="muted">Microsoft sign-in hasn't been set up here. In the meantime, you can look at the sample report.</p>
+        <div class="btn-row"><a class="btn btn-primary" href="/demo">See the sample report</a><a class="btn btn-ghost" href="/setup">Setup guide</a></div>
+      {% elif not user %}
+        <h3>Step 1: sign in with your work account</h3>
+        <p class="muted">We use Microsoft sign-in, so we never see your password.</p>
+        <a class="btn btn-primary" href="/login?next=/connect">Sign in with Microsoft</a>
+      {% elif not tenant %}
+        <h3>Step 2: approve read-only access</h3>
+        <p class="muted">Signed in as {{ user.email }}. Microsoft will show the list of permissions below and ask you to accept them for your organization. You need to be a <strong>Global Administrator</strong> (or Privileged Role Administrator).</p>
+        <div class="btn-row">
+          <a class="btn btn-primary" href="/connect/start">Approve read-only access</a>
+          <a class="btn btn-ghost" href="/logout">Use a different account</a>
+        </div>
+        <p class="note section-gap">Not an admin? Send this page to your Microsoft 365 admin: <code>{{ settings.url('/connect') }}</code> <a href="#" data-copy="{{ settings.url('/connect') }}">Copy link</a></p>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="report-section">
+    <h2>Exactly what we can read</h2>
+    <p class="muted">All permissions are read-only. We can't change, send or delete anything in your tenant.</p>
+    <div class="card table-wrap">
+      <table class="table">
+        <thead><tr><th>Microsoft permission</th><th>Why we need it</th></tr></thead>
+        <tbody>{% for name, why in permissions %}<tr><td class="perm-name">{{ name }}</td><td>{{ why }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="report-section">
+    <h2>What we never do</h2>
+    <div class="card prose">
+      <ul>
+        <li>We never see or store passwords. Sign-in happens on Microsoft's pages.</li>
+        <li>We never read email content, files, chats or calendars.</li>
+        <li>We store only the findings in your report, and delete them when you disconnect.</li>
+        <li>We can't make changes. Fixes are always made by you, or by Tenvaultix if you ask us to.</li>
+      </ul>
+    </div>
+  </section>
+</div>
+{% endblock %}

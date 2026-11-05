@@ -1,0 +1,36 @@
+# Microsoft list prices used to estimate money wasted on unused licenses.
+# US dollars per user per month, annual commitment, after Microsoft's 1 July 2026 price change.
+# Customers' real prices differ by country, reseller and contract, so the app always calls these
+# "estimates". Review this file whenever Microsoft changes prices.
+reviewed: 2026-11-05
+currency: USD
+
+skus:
+  # Business plans (up to 300 users)
+  O365_BUSINESS_ESSENTIALS: {name: Microsoft 365 Business Basic, price: 7.00}
+  O365_BUSINESS_PREMIUM: {name: Microsoft 365 Business Standard, price: 14.00}
+  SPB: {name: Microsoft 365 Business Premium, price: 22.00}
+  O365_BUSINESS: {name: Microsoft 365 Apps for business, price: 8.25}
+  # Enterprise plans
+  STANDARDPACK: {name: Office 365 E1, price: 10.00}
+  ENTERPRISEPACK: {name: Office 365 E3, price: 26.00}
+  ENTERPRISEPREMIUM: {name: Office 365 E5, price: 41.00}
+  SPE_E3: {name: Microsoft 365 E3, price: 39.00}
+  SPE_E5: {name: Microsoft 365 E5, price: 60.00}
+  OFFICESUBSCRIPTION: {name: Microsoft 365 Apps for enterprise, price: 12.00}
+  # Add-ons and single services
+  EXCHANGESTANDARD: {name: Exchange Online (Plan 1), price: 4.00}
+  EXCHANGEENTERPRISE: {name: Exchange Online (Plan 2), price: 8.00}
+  AAD_PREMIUM: {name: Microsoft Entra ID P1, price: 6.00}
+  AAD_PREMIUM_P2: {name: Microsoft Entra ID P2, price: 9.00}
+  INTUNE_A: {name: Microsoft Intune Plan 1, price: 8.00}
+  # Free or trial products: never counted as waste
+  FLOW_FREE: {name: Power Automate Free, price: 0}
+  POWER_BI_STANDARD: {name: Power BI (free), price: 0}
+  TEAMS_EXPLORATORY: {name: Teams Exploratory, price: 0}
+  WINDOWS_STORE: {name: Windows Store for Business, price: 0}
+  STREAM: {name: Microsoft Stream trial, price: 0}
+  CCIBOTS_PRIVPREV_VIRAL: {name: Copilot Studio viral trial, price: 0}
+  POWERAPPS_DEV: {name: Power Apps Developer, price: 0}
+  POWERAPPS_VIRAL: {name: Power Apps Plan 2 trial, price: 0}
+  RIGHTSMANAGEMENT_ADHOC: {name: Rights Management Adhoc, price: 0}

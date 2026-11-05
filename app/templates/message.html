@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · Tenvaultix{% endblock %}
+{% block content %}
+<div class="wrap">
+  <div class="message">
+    <div class="card">
+      <div class="message-icon {{ kind }}" aria-hidden="true">
+        {% if kind == 'error' %}<svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor"><rect x="7" y="2.5" width="2.2" height="7.5" rx="1.1"/><circle cx="8.1" cy="12.8" r="1.4"/></svg>
+        {% elif kind == 'good' %}<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>
+        {% else %}<svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3.6" r="1.4"/><rect x="6.9" y="6.2" width="2.2" height="7.4" rx="1.1"/></svg>{% endif %}
+      </div>
+      <h1 class="h2">{{ title }}</h1>
+      <p class="muted">{{ body }}</p>
+      <div class="btn-row">
+        {% for label, href in actions %}<a class="btn {{ 'btn-primary' if loop.first else 'btn-ghost' }}" href="{{ href }}">{{ label }}</a>{% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

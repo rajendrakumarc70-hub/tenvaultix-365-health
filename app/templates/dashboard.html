@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% from "_macros.html" import ring, bar %}
+{% block title %}Dashboard · {{ tenant.name or 'Your company' }} · Tenvaultix{% endblock %}
+{% block head %}{% if running %}<meta http-equiv="refresh" content="15">{% endif %}{% endblock %}
+{% block content %}
+<section class="page-head on-dark">
+  <div class="wrap">
+    <div class="head-row">
+      <div>
+        <span class="eyebrow">Dashboard</span>
+        <h1>{{ tenant.name or 'Your company' }}</h1>
+        <p class="sub">Signed in as {{ user.email }} · <span class="chip plan">{{ plan_name }}</span>{% if days_left is not none %} · {{ days_left }} day{{ 's' if days_left != 1 }} of free trial left{% endif %}</p>
+      </div>
+      <div class="btn-row">
+        <form method="post" action="/app/scan">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn btn-sky" type="submit"{% if running or not scanning_allowed %} disabled{% endif %}>{% if running %}Scanning…{% else %}Run scan now{% endif %}</button>
+        </form>
+        {% if latest %}<a class="btn btn-light" href="/app/report/{{ latest.id }}">Open full report</a>{% endif %}
+      </div>
+    </div>
+    {% if summary %}
+    <div class="overview">
+      <div>
+        {{ ring(summary.score, summary.grade) }}
+        <p class="grade-text">Grade {{ summary.grade }} · {{ latest.started_at|date }}</p>
+      </div>
+      <div class="kpis">
+        <div class="kpi urgent"><b>{{ summary.urgent }}</b><span>urgent problems</span></div>
+        <div class="kpi"><b>{{ summary.problems }}</b><span>problems in total</span></div>
+        <div class="kpi money"><b>{{ summary.waste|money }}</b><span>a month on unused licenses</span></div>
+        <div class="kpi"><b>{{ summary.counts.pass }}</b><span>checks passed</span></div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<div class="wrap">
+  {% if running %}
+  <div class="banner"><p><strong>Scan in progress.</strong> It usually takes a minute or two. This page refreshes by itself.</p></div>
+  {% endif %}
+  {% if not scanning_allowed %}
+  <div class="banner warn">
+    <p><strong>Your free trial has ended.</strong> Your reports are still here. Choose a plan to keep scanning every week.</p>
+    <a class="btn btn-primary btn-sm" href="{{ settings.booking_url or ('mailto:' ~ settings.contact_email if settings.contact_email else '/#pricing') }}">Choose a plan</a>
+  </div>
+  {% elif days_left is not none and days_left <= 3 %}
+  <div class="banner warn"><p>Your free trial ends in {{ days_left }} day{{ 's' if days_left != 1 }}. Choose a plan to keep weekly scans running.</p></div>
+  {% endif %}
+
+  {% if not latest and not running %}
+  <section class="report-section">
+    <div class="card">
+      <h3>No finished scans yet</h3>
+      {% if scans and scans[0].status == 'failed' %}
+      <p>The last scan didn't finish: {{ scans[0].error }}</p>
+      {% else %}
+      <p>Press "Run scan now" to create your first report.</p>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if summary %}
+  <section class="report-section">
+    <h2>By area</h2>
+    <div class="cats">
+      {% for c in summary.categories if c.score is not none %}
+      <div class="cat">
+        <div class="cat-top"><span class="cat-name">{{ c.name }}</span><span class="cat-score">{{ c.score }}</span></div>
+        {{ bar(c.score, c.grade) }}
+        <div class="cat-meta">{% if c.problems %}{{ c.problems }} to fix{% else %}All good{% endif %}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="report-section">
+    <h2>Scan history</h2>
+    <div class="card table-wrap">
+      {% if scans %}
+      <table class="table">
+        <thead><tr><th>Started</th><th>Status</th><th>Score</th><th>Problems</th><th>Unused licenses</th><th></th></tr></thead>
+        <tbody>
+        {% for s in scans %}
+          <tr>
+            <td>{{ s.started_at|date }}</td>
+            <td><span class="status-dot {{ s.status }}"></span>{{ {'done': 'Finished', 'failed': 'Failed', 'running': 'Running'}[s.status] }}</td>
+            <td>{% if s.score is not none %}{{ s.score }} ({{ s.grade }}){% else %}–{% endif %}</td>
+            <td>{% if s.status == 'done' %}{{ s.problems }} ({{ s.urgent }} urgent){% elif s.status == 'failed' %}<span class="small muted">{{ s.error }}</span>{% else %}–{% endif %}</td>
+            <td>{% if s.status == 'done' %}{{ s.waste|money }}/mo{% else %}–{% endif %}</td>
+            <td>{% if s.status == 'done' %}<a href="/app/report/{{ s.id }}">View</a>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="muted">No scans yet.</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="report-section" id="team">
+    <h2>Team access <span class="count">people who can see these reports after signing in with Microsoft</span></h2>
+    <div class="card">
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Email</th><th>Role</th><th>Added</th><th></th></tr></thead>
+          <tbody>
+          {% for m in members %}
+            <tr>
+              <td>{{ m.email }}</td>
+              <td>{{ 'Owner' if m.role == 'owner' else 'Can view' }}</td>
+              <td>{{ m.added_at|date }}</td>
+              <td>
+                {% if role == 'owner' and m.role != 'owner' %}
+                <form method="post" action="/app/team/remove">
+                  <input type="hidden" name="csrf" value="{{ csrf }}">
+                  <input type="hidden" name="email" value="{{ m.email }}">
+                  <button class="btn btn-ghost btn-sm" type="submit">Remove</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if role == 'owner' %}
+      <form class="inline-form section-gap" method="post" action="/app/team">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="sr-only" for="member-email">Work email</label>
+        <input id="member-email" name="email" type="email" placeholder="colleague@yourcompany.com" required>
+        <button class="btn btn-primary" type="submit">Add person</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if role == 'owner' %}
+  <section class="report-section" id="danger">
+    <h2>Disconnect</h2>
+    <div class="card danger">
+      <p>Disconnecting deletes all reports and team access straight away. Afterwards, remove our app from Microsoft Entra (Enterprise apps) to withdraw its read access.</p>
+      <form class="inline-form" method="post" action="/app/disconnect" data-confirm-word="DELETE">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="sr-only" for="confirm">Type DELETE to confirm</label>
+        <input id="confirm" name="confirm" type="text" placeholder="Type DELETE to confirm" autocomplete="off">
+        <button class="btn btn-danger" type="submit">Disconnect and delete data</button>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

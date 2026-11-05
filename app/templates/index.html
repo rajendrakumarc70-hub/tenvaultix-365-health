@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% from "_macros.html" import ring, status_icon %}
+{% block content %}
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow">Microsoft 365 health check for small businesses</span>
+      <h1>Is your Microsoft 365 safe, and are you paying for licenses nobody uses?</h1>
+      <p class="lead">Tenvaultix checks your tenant every week for security gaps and wasted licenses, then tells you in plain English what to fix and what it's costing you.</p>
+      <form class="check-form" action="/check" method="get">
+        <label for="domain">Start with a free email security check. No sign-in needed.</label>
+        <div class="inline-form">
+          <input id="domain" name="domain" type="text" inputmode="url" autocomplete="off" placeholder="yourcompany.com" value="{{ domain_value or '' }}" required>
+          <button class="btn btn-sky" type="submit">Check my domain</button>
+        </div>
+        {% if domain_error %}<p class="field-error" role="alert">{{ domain_error }}</p>{% endif %}
+      </form>
+      <div class="hero-links">
+        <a href="/demo">See a sample report →</a>
+        <a href="/connect">Connect Microsoft 365: 14 days free →</a>
+      </div>
+      <ul class="trust">
+        <li>Read-only access</li>
+        <li>We never see passwords or read email</li>
+        <li>Disconnect any time</li>
+      </ul>
+    </div>
+    {% if preview %}
+    <a class="preview" href="/demo" aria-label="Open the sample report">
+      <div class="preview-head"><strong>Sample report: Acme Diagnostics</strong><span class="chip">Weekly scan</span></div>
+      <div class="preview-body">
+        {{ ring(preview.score, preview.grade, 116) }}
+        <div class="preview-stats">
+          <div class="preview-stat"><b>{{ preview.waste|money }}/month</b><span>spent on unused licenses</span></div>
+          <div class="preview-stat"><b>{{ preview.urgent }} urgent</b><span>of {{ preview.problems }} problems found</span></div>
+        </div>
+      </div>
+      <ul class="preview-list">
+        {% for r in preview.top %}<li class="s-{{ r.status }}">{{ status_icon(r.status) }}<span>{{ r.title }}</span></li>{% endfor %}
+      </ul>
+    </a>
+    {% endif %}
+  </div>
+</section>
+
+<section class="section" id="checks">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>What we check, every week</h2>
+      <p>Twenty checks across your Microsoft 365, the same ones a good IT partner would look at, written for business owners rather than engineers.</p>
+    </div>
+    <div class="grid grid-4">
+      <div class="card"><div class="icon">🔐</div><h3>Sign-in & MFA</h3><p class="muted">Who can sign in with just a password, whether MFA is enforced, and whether old sign-in methods are blocked.</p></div>
+      <div class="card"><div class="icon">🛡️</div><h3>Admin accounts</h3><p class="muted">Admins without MFA, too many Global Admins, and staff approving risky outside apps.</p></div>
+      <div class="card"><div class="icon">✉️</div><h3>Email security</h3><p class="muted">SPF, DKIM and DMARC, plus hidden rules that forward company email to outside addresses.</p></div>
+      <div class="card"><div class="icon">💸</div><h3>Licenses & cost</h3><p class="muted">Licenses nobody uses, licenses on people who've left, and what that costs you each month.</p></div>
+      <div class="card"><div class="icon">👥</div><h3>Accounts & guests</h3><p class="muted">Inactive accounts that can still sign in, who can invite guests, and old guest access.</p></div>
+      <div class="card"><div class="icon">🔗</div><h3>File sharing</h3><p class="muted">Whether SharePoint and OneDrive allow "Anyone" links that open without sign-in.</p></div>
+      <div class="card"><div class="icon">💻</div><h3>Devices</h3><p class="muted">Laptops and phones that don't meet your security rules (Intune).</p></div>
+      <div class="card"><div class="icon">📈</div><h3>Secure Score</h3><p class="muted">Microsoft's own security score, tracked alongside ours.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>How it works</h2>
+      <p>Set up in about two minutes. No software to install, nothing to change in your tenant.</p>
+    </div>
+    <div class="grid grid-3">
+      <div class="card"><div class="step-num">1</div><h3>Connect</h3><p class="muted">Sign in with your work account. Your Microsoft 365 admin approves read-only access on Microsoft's own screen.</p></div>
+      <div class="card"><div class="step-num">2</div><h3>We scan</h3><p class="muted">Your first report is ready in minutes. After that we re-check automatically and show what changed.</p></div>
+      <div class="card"><div class="step-num">3</div><h3>You fix, or we do</h3><p class="muted">Every problem comes with step-by-step instructions. Prefer not to? The Tenvaultix team can fix it for you.</p></div>
+    </div>
+    <div class="band section-gap">
+      <div>
+        <h2>Why every week, not once?</h2>
+        <p>Your tenant keeps changing: people join and leave, someone gets admin rights, a license is bought and forgotten. After a phishing attack, the attacker quietly adds a forwarding rule. A one-time audit misses all of that.</p>
+      </div>
+      <a class="btn btn-sky" href="/connect">Start free trial</a>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="pricing">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Simple pricing per company</h2>
+      <p>One price for your whole Microsoft 365, not per user. Every paid plan starts with a 14-day free trial.</p>
+    </div>
+    <div class="plans">
+      <div class="card plan">
+        <h3>Free check</h3>
+        <p class="price">$0</p>
+        <p class="price-alt">No sign-in</p>
+        <ul>
+          <li>SPF, DKIM and DMARC check for any domain</li>
+          <li>Plain-English results</li>
+          <li>Sample full report</li>
+        </ul>
+        <a class="btn btn-ghost" href="/#domain">Check a domain</a>
+      </div>
+      <div class="card plan">
+        <h3>Essentials</h3>
+        <p class="price">$39<small>/month</small></p>
+        <p class="price-alt">₹1,999/month in India · up to 50 users</p>
+        <ul>
+          <li>All 20 checks, every week</li>
+          <li>Money-wasted estimate</li>
+          <li>Step-by-step fix guides</li>
+          <li>PDF report for insurers and auditors</li>
+        </ul>
+        <a class="btn btn-primary" href="/connect">Start free trial</a>
+      </div>
+      <div class="card plan featured">
+        <span class="tag">Most popular</span>
+        <h3>Business</h3>
+        <p class="price">$79<small>/month</small></p>
+        <p class="price-alt">₹4,999/month in India · up to 200 users</p>
+        <ul>
+          <li>Everything in Essentials</li>
+          <li>Daily scans</li>
+          <li>History: what changed and when</li>
+          <li>Team access for your IT people</li>
+          <li class="soon">Instant email alerts (coming soon)</li>
+        </ul>
+        <a class="btn btn-primary" href="/connect">Start free trial</a>
+      </div>
+      <div class="card plan">
+        <h3>Partner</h3>
+        <p class="price">$15<small>/tenant/month</small></p>
+        <p class="price-alt">For IT providers</p>
+        <ul>
+          <li>Daily scans for each customer</li>
+          <li>Reports you can share with customers</li>
+          <li class="soon">All tenants on one screen (coming soon)</li>
+          <li class="soon">Your logo on reports (coming soon)</li>
+        </ul>
+        <a class="btn btn-ghost" href="{{ settings.booking_url or ('mailto:' ~ settings.contact_email if settings.contact_email else '/connect') }}">Talk to us</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap narrow">
+    <div class="section-head"><h2>Questions</h2></div>
+    <div class="faq">
+      <details><summary>What access do you need?</summary><p>Read-only access through Microsoft's official API. Your admin approves it on Microsoft's own consent screen, which lists every permission. We can't change anything in your tenant. The <a href="/privacy">privacy page</a> lists each permission and why we need it.</p></details>
+      <details><summary>Do you read our email or files?</summary><p>No. We read settings and metadata only: users, licenses, policies, inbox-rule settings and sign-in dates. We never read email content or open documents.</p></details>
+      <details><summary>Which Microsoft 365 plans work?</summary><p>Business Basic, Standard and Premium, and E3/E5. A few checks (sign-in history, Conditional Access, device compliance) need Business Premium or E3/E5; on other plans the report tells you what those checks would show and how to get them.</p></details>
+      <details><summary>How do we stop?</summary><p>Disconnect from your dashboard and we delete your reports straight away. You can also remove our app any time in Microsoft Entra under Enterprise applications.</p></details>
+      <details><summary>Is this a Microsoft product?</summary><p>No. Tenvaultix 365 Health Check is an independent service from Tenvaultix that uses Microsoft's official APIs.</p></details>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <div class="cta-card">
+      <div>
+        <h3>See where you stand in two minutes</h3>
+        <p>Connect your Microsoft 365 and get your first full report today. The first 14 days are free.</p>
+      </div>
+      <div class="btn-row">
+        <a class="btn btn-sky" href="/connect">Start free trial</a>
+        <a class="btn btn-light" href="/demo">Sample report</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

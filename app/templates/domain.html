@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_macros.html" import ring, finding with context %}
+{% block title %}Email security check: {{ report.domain }} · Tenvaultix{% endblock %}
+{% block content %}
+<section class="page-head on-dark">
+  <div class="wrap">
+    <div class="head-row">
+      <div>
+        <span class="eyebrow">Free email security check</span>
+        <h1>{{ report.domain }}</h1>
+        <p class="sub">
+          {% if report.provider %}Email handled by {{ report.provider }}{% else %}No mail server (MX) found{% endif %}
+          {% if report.uses_microsoft_365 and report.provider != 'Microsoft 365' %} · Uses Microsoft 365{% endif %}
+        </p>
+      </div>
+      <div class="btn-row no-print">
+        <a class="btn btn-light btn-sm" href="/">Check another domain</a>
+        <a class="btn btn-light btn-sm" href="#" data-print>Save as PDF</a>
+      </div>
+    </div>
+    {% if not report.error %}
+    <div class="overview">
+      <div>
+        {{ ring(summary.score, summary.grade) }}
+        <p class="grade-text">Grade {{ summary.grade }}</p>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><b>{{ summary.counts.pass }} of {{ results|length }}</b><span>email checks passed</span></div>
+        <div class="kpi urgent"><b>{{ summary.urgent }}</b><span>serious problems</span></div>
+        <div class="kpi"><b>{{ report.mx|length }}</b><span>mail servers (MX)</span></div>
+        <div class="kpi"><b>{% if report.uses_microsoft_365 %}Yes{% else %}No{% endif %}</b><span>Microsoft 365 detected</span></div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<div class="wrap">
+  {% if report.error %}
+    <div class="banner warn"><p>We couldn't look up the DNS records for {{ report.domain }} just now. Check the spelling, or try again in a minute.</p></div>
+  {% else %}
+  <section class="report-section">
+    <h2>Results <span class="count">These three DNS records stop criminals sending email in your name.</span></h2>
+    <div class="findings">
+      {% for r in results %}{{ finding(r, open=(r.status in ('fail', 'warn')), settings=settings) }}{% endfor %}
+    </div>
+    {% if report.mx %}<p class="note">Mail servers: {{ report.mx|join(', ') }}</p>{% endif %}
+  </section>
+  {% endif %}
+
+  <section class="report-section no-print">
+    <div class="cta-card">
+      <div>
+        <h3>This is only the outside view</h3>
+        <p>The full health check looks inside your Microsoft 365: who has no MFA, admin accounts, hidden forwarding rules, risky sharing, and licenses you're paying for but not using.</p>
+      </div>
+      <div class="btn-row">
+        <a class="btn btn-sky" href="/connect">Run the full check, free for 14 days</a>
+        <a class="btn btn-light" href="/demo">See a sample report</a>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

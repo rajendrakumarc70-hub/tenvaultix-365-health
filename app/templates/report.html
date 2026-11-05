@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% from "_macros.html" import ring, bar, finding with context %}
+{% block title %}{{ tenant_name }}: Microsoft 365 health report · Tenvaultix{% endblock %}
+{% block head %}<meta name="robots" content="noindex">{% endblock %}
+{% block banner %}
+{% if demo %}
+<div class="demo-banner">
+  <div class="wrap">
+    <span><strong>Sample report.</strong> Acme Diagnostics is a made-up company. Connect your own Microsoft 365 to see your real results.</span>
+    <a class="btn btn-primary btn-sm" href="/connect">Check my tenant, free</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block content %}
+<section class="page-head on-dark">
+  <div class="wrap">
+    <div class="head-row">
+      <div>
+        <span class="eyebrow">Microsoft 365 health report</span>
+        <h1>{{ tenant_name }}</h1>
+        <p class="sub">Scanned {{ scanned_at|date }}{% if meta.users %} · {{ meta.users }} accounts{% endif %}{% if meta.domains %} · {{ meta.domains|reject('onmicrosoft')|list|join(', ') }}{% endif %}</p>
+      </div>
+      <div class="btn-row no-print">
+        {% if not demo %}<a class="btn btn-light btn-sm" href="/app">Dashboard</a>{% endif %}
+        <a class="btn btn-light btn-sm" href="#" data-print>Save as PDF</a>
+      </div>
+    </div>
+    <div class="overview">
+      <div>
+        {{ ring(summary.score, summary.grade) }}
+        <p class="grade-text">Grade {{ summary.grade }}</p>
+      </div>
+      <div class="kpis">
+        <div class="kpi urgent"><b>{{ summary.urgent }}</b><span>urgent problems (critical or high)</span></div>
+        <div class="kpi"><b>{{ summary.problems }}</b><span>problems in total</span></div>
+        <div class="kpi money"><b>{{ summary.waste|money }}</b><span>a month on unused licenses</span></div>
+        <div class="kpi"><b>{{ summary.counts.pass }}</b><span>checks passed</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+  {% if changes and not changes.first_scan and (changes.new or changes.fixed) %}
+  <section class="report-section">
+    <h2>Since your last scan</h2>
+    <div class="changes">
+      <div class="card"><h3>Fixed ({{ changes.fixed|length }})</h3>{% if changes.fixed %}<ul>{% for t in changes.fixed %}<li>{{ t }}</li>{% endfor %}</ul>{% else %}<p class="muted">Nothing new fixed.</p>{% endif %}</div>
+      <div class="card"><h3>New problems ({{ changes.new|length }})</h3>{% if changes.new %}<ul>{% for t in changes.new %}<li>{{ t }}</li>{% endfor %}</ul>{% else %}<p class="muted">No new problems. Nice.</p>{% endif %}</div>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="report-section">
+    <h2>By area</h2>
+    <div class="cats">
+      {% for c in summary.categories if c.score is not none %}
+      <div class="cat">
+        <div class="cat-top"><span class="cat-name">{{ c.name }}</span><span class="cat-score">{{ c.score }}</span></div>
+        {{ bar(c.score, c.grade) }}
+        <div class="cat-meta">{% if c.problems %}{{ c.problems }} to fix{% else %}All good{% endif %} · {{ c.checks }} check{{ 's' if c.checks != 1 }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if problems %}
+  <section class="report-section">
+    <h2>Fix these first <span class="count">{{ problems|length }} problems, most serious at the top</span>
+      <button class="btn btn-ghost btn-sm no-print" type="button" data-toggle-all="problem-list">Expand all</button></h2>
+    <div class="findings" id="problem-list">
+      {% for r in problems %}{{ finding(r, open=loop.first, settings=settings) }}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if not demo and (settings.booking_url or settings.contact_email) and problems %}
+  <section class="report-section no-print">
+    <div class="cta-card">
+      <div>
+        <h3>Want us to fix these for you?</h3>
+        <p>The Tenvaultix team can work through this report with you, usually in a few hours, without disrupting your staff.</p>
+      </div>
+      <a class="btn btn-sky" href="{{ settings.booking_url or ('mailto:' ~ settings.contact_email ~ '?subject=Fix%20my%20Microsoft%20365%20report') }}">Book a fix session</a>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if unavailable %}
+  <section class="report-section">
+    <h2>Not checked <span class="count">what's missing and why</span></h2>
+    <div class="findings">{% for r in unavailable %}{{ finding(r, show_cta=false) }}{% endfor %}</div>
+  </section>
+  {% endif %}
+
+  {% if info %}
+  <section class="report-section">
+    <h2>For your information</h2>
+    <div class="findings">{% for r in info %}{{ finding(r, show_cta=false) }}{% endfor %}</div>
+  </section>
+  {% endif %}
+
+  {% if passed %}
+  <section class="report-section">
+    <h2>Passed <span class="count">{{ passed|length }} checks</span>
+      <button class="btn btn-ghost btn-sm no-print" type="button" data-toggle-all="passed-list">Expand all</button></h2>
+    <div class="findings" id="passed-list">{% for r in passed %}{{ finding(r, show_cta=false) }}{% endfor %}</div>
+  </section>
+  {% endif %}
+
+  <section class="report-section">
+    <p class="note">
+      Money figures are estimates based on Microsoft's US list prices (reviewed {{ prices_reviewed }}); your own prices may differ.
+      {% if meta.activity_source %}Activity dates come from {{ meta.activity_source }}.{% endif %}
+      {% if meta.mfa_source %}MFA status comes from the {{ meta.mfa_source }}.{% endif %}
+      This report only reads settings and metadata. It never reads email content or files.
+    </p>
+  </section>
+</div>
+{% endblock %}

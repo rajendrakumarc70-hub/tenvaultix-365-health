@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Privacy & data · Tenvaultix 365 Health Check{% endblock %}
+{% block content %}
+<section class="page-head on-dark">
+  <div class="wrap">
+    <span class="eyebrow">Privacy & data</span>
+    <h1>How we handle your data</h1>
+    <p class="sub">Short version: read-only access, findings only, deleted when you leave.</p>
+  </div>
+</section>
+<div class="wrap narrow prose">
+  <h2>What we can read</h2>
+  <p>When your Microsoft 365 admin connects, they approve these read-only Microsoft Graph permissions on Microsoft's own consent screen:</p>
+  <div class="card table-wrap">
+    <table class="table">
+      <thead><tr><th>Permission</th><th>What we use it for</th></tr></thead>
+      <tbody>{% for name, why in permissions %}<tr><td class="perm-name">{{ name }}</td><td>{{ why }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <p>We never read email content, files, chats or calendars, and we can't change anything in your tenant.</p>
+
+  <h2>What we store</h2>
+  <ul>
+    <li><strong>Your report findings:</strong> the result of each check, including the names and email addresses of accounts a finding is about (for example, "these 3 people have no MFA"). That's what makes the report useful.</li>
+    <li><strong>Who can see the reports:</strong> the email addresses of the owner and the people they add.</li>
+    <li><strong>Basic company details:</strong> your organization's name and Microsoft tenant ID.</li>
+  </ul>
+  <p>We don't store raw copies of your directory, mailbox settings or logs. Each scan reads them, works out the findings and discards the rest.</p>
+
+  <h2>Free domain check</h2>
+  <p>The free check only looks up public DNS records for the domain you type. We don't save the domain or link it to you.</p>
+
+  <h2>Sign-in</h2>
+  <p>You sign in on Microsoft's pages. We receive your name, email address and organization ID, and never your password. We use one session cookie to keep you signed in; it expires after 8 hours.</p>
+
+  <h2>Deleting your data</h2>
+  <p>The owner can press <em>Disconnect</em> on the dashboard at any time, which deletes every report and team entry for your company immediately. To withdraw our read access as well, remove the app in Microsoft Entra admin center &gt; Enterprise apps.</p>
+
+  <h2>Questions</h2>
+  <p>{% if settings.contact_email %}Email <a href="mailto:{{ settings.contact_email }}">{{ settings.contact_email }}</a>.{% else %}Contact Tenvaultix.{% endif %}</p>
+</div>
+{% endblock %}
