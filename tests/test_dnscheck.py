@@ -107,3 +107,18 @@ def test_check_domain_reports_dns_outage():
     report = check_domain("example.com", Broken(), tenant_lookup=None)
     assert report["error"] == "timeout"
     assert report["results"] == {}
+
+
+def test_system_resolver_works_without_resolv_conf(monkeypatch, tmp_path):
+    from app.dnscheck import FALLBACK_NAMESERVERS, SystemResolver
+
+    monkeypatch.delenv("PREFIX", raising=False)
+    resolver = SystemResolver(config_file=str(tmp_path / "missing.conf"))
+    assert resolver._resolver.nameservers == FALLBACK_NAMESERVERS
+
+    termux = tmp_path / "etc"
+    termux.mkdir()
+    (termux / "resolv.conf").write_text("nameserver 9.9.9.9\n")
+    monkeypatch.setenv("PREFIX", str(tmp_path))
+    resolver = SystemResolver(config_file=str(tmp_path / "missing.conf"))
+    assert resolver._resolver.nameservers == ["9.9.9.9"]

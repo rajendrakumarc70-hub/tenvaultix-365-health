@@ -5,6 +5,7 @@ for every custom domain the tenant owns.
 """
 from __future__ import annotations
 
+import os
 import re
 from typing import Callable, Protocol
 
@@ -33,12 +34,30 @@ class Resolver(Protocol):
     def cname(self, name: str) -> str | None: ...
 
 
+FALLBACK_NAMESERVERS = ["1.1.1.1", "8.8.8.8"]
+
+
 class SystemResolver:
     """Real DNS via dnspython. Missing records come back empty; outages raise DnsError."""
 
-    def __init__(self, timeout: float = 4.0):
-        self._resolver = dns.resolver.Resolver()
+    def __init__(self, timeout: float = 4.0, config_file: str = "/etc/resolv.conf"):
+        self._resolver = self._make_resolver(config_file)
         self._resolver.lifetime = timeout
+
+    @staticmethod
+    def _make_resolver(config_file: str) -> dns.resolver.Resolver:
+        # Android (Termux) and some minimal containers have no /etc/resolv.conf.
+        candidates = [config_file]
+        if os.environ.get("PREFIX"):
+            candidates.append(os.path.join(os.environ["PREFIX"], "etc", "resolv.conf"))
+        for path in candidates:
+            try:
+                return dns.resolver.Resolver(filename=path)
+            except dns.resolver.NoResolverConfiguration:
+                continue
+        resolver = dns.resolver.Resolver(configure=False)
+        resolver.nameservers = list(FALLBACK_NAMESERVERS)
+        return resolver
 
     def _query(self, name: str, rtype: str):
         try:

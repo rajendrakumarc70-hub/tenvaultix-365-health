@@ -59,6 +59,25 @@ TVX_SESSION_SECRET=dev uvicorn app.main:app --reload
 Open http://localhost:8000. The home page, free domain check, sample report (`/demo`), pricing and privacy
 pages all work. Sign-in shows a "not set up yet" page until you complete the steps below.
 
+On **Windows** (PowerShell), from the `m365-health` folder:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+$env:TVX_SESSION_SECRET="dev"
+.venv\Scripts\python -m uvicorn app.main:app
+```
+
+On an **Android tablet** with Termux (the first install compiles two packages and can take 10–30 minutes):
+
+```bash
+pkg install -y git python rust binutils python-cryptography
+export ANDROID_API_LEVEL=$(getprop ro.build.version.sdk)
+pip install fastapi uvicorn jinja2 itsdangerous python-multipart msal requests dnspython pyyaml
+export TVX_SESSION_SECRET=dev
+python -m uvicorn app.main:app
+```
+
 Run the tests (81, all offline; Microsoft Graph, sign-in and DNS are faked):
 
 ```bash
