@@ -28,6 +28,7 @@ tenant, a scan every week (or every day on higher plans).
 | Check library | `app/checks/catalog.yaml` + `app/checks/rules.py` | 20 checks. Wording, severity and fix steps live in YAML; the pass/warn/fail logic lives in Python under the same id. |
 | Scoring | `app/scoring.py` | 0–100 score weighted by severity, grade A–F, score per area, money wasted, "what changed since last scan". |
 | License prices | `app/data/license_prices.yaml` | Microsoft list prices (after the July 2026 increase) used for the money-wasted estimate. Review when Microsoft changes prices. |
+| Office blueprint | `app/blueprint.py` + `app/templates/_blueprint.html` | The top of every report: the tenant drawn as an office floor plan an inspector has marked up. Front door = sign-in and MFA, master keys = admins, mailroom = email seals, file room = sharing, one desk per paid license, reception = guests, equipment room = devices. Numbered red marks link to the fix. Fonts are self-hosted under the SIL Open Font License (`app/static/fonts/`). |
 | Web app | `app/web.py`, `app/templates/` | Home page with pricing, free check, sample report, sign-in, connect flow, dashboard, report, team access, disconnect. |
 | Storage | `app/db.py` | SQLite: tenants, team members, scan findings. Disconnecting deletes everything for that tenant. |
 | Scheduler CLI | `app/cli.py` | `scan-due` (run hourly), `scan`, `list`, `set-plan`. |

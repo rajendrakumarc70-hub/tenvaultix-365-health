@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Callable
 
+from . import blueprint
 from .checks import run_checks
 from .config import PLANS
 from .db import Store, utcnow
@@ -30,6 +31,7 @@ def run_scan(store: Store, tenant_id: str, collect: CollectFn, scan_id: int | No
             "mailboxes_checked": snapshot.get("mailboxes_checked", 0),
             "users": len(snapshot.get("users") or []),
             "domains": [d["name"] for d in snapshot["tenant"].get("domains", [])],
+            "facts": blueprint.facts(snapshot),  # counts for the office drawing
         }
         store.finish_scan(scan_id, results, summary, meta)
         if snapshot["tenant"].get("name"):

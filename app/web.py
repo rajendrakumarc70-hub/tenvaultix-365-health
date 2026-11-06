@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import demo
+from . import blueprint, demo
 from .auth import LoginError, MicrosoftAuth, consent_error_message, is_consent_admin
 from .checks import results_for_domain, run_checks
 from .collector import collect
@@ -157,6 +157,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
             "passed": [r for r in ordered if r["status"] == "pass"],
             "changes": compare(previous, results) if previous is not None else None,
             "prices_reviewed": prices_reviewed(),
+            "bp": blueprint.build(results, meta.get("facts")),
         }
 
     # ------------------------------------------------------------ public pages
@@ -192,7 +193,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         results = run_checks(snap)
         meta = {"activity_source": snap["activity_source"], "mfa_source": snap["mfa_source"],
                 "users": len(snap["users"]), "mailboxes_checked": snap["mailboxes_checked"],
-                "domains": [d["name"] for d in snap["tenant"]["domains"]], "features": snap["features"]}
+                "domains": [d["name"] for d in snap["tenant"]["domains"]], "features": snap["features"],
+                "facts": blueprint.facts(snap)}
         return render(request, "report.html", **report_context(
             results, tenant_name=snap["tenant"]["name"], scanned_at=snap["collected_at"], meta=meta, is_demo=True))
 

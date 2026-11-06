@@ -1,0 +1,267 @@
+{#- "Your digital office, inspected": the tenant drawn as an office floor plan an inspector has marked up.
+    Data comes from app/blueprint.py. No inline styles or scripts (the CSP forbids them). -#}
+{%- set GEO = {
+  'mailroom':  {'x': 20,  'y': 20,  'w': 310, 'h': 200},
+  'equipment': {'x': 330, 'y': 20,  'w': 290, 'h': 200},
+  'files':     {'x': 620, 'y': 20,  'w': 360, 'h': 200},
+  'desks':     {'x': 20,  'y': 220, 'w': 960, 'h': 250},
+  'keys':      {'x': 20,  'y': 470, 'w': 310, 'h': 150},
+  'entrance':  {'x': 330, 'y': 470, 'w': 290, 'h': 150},
+  'reception': {'x': 620, 'y': 470, 'w': 360, 'h': 150},
+} -%}
+{%- set ST_WORD = {'fail': 'Problem', 'warn': 'Needs attention', 'pass': 'Looks good', 'na': 'Not inspected'} -%}
+{%- set f = bp.facts -%}
+{%- set RESCAN = 'Run a new scan to draw this room' -%}
+<section class="report-section blueprint" id="office" aria-labelledby="office-title">
+  <div class="bp-intro">
+    <div>
+      <h2 id="office-title">Your digital office, inspected</h2>
+      <p class="muted">We drew your Microsoft 365 as an office building. Each room is one area of your set-up, and every red
+        number is something a building inspector would flag. Tap a number to jump to the fix.</p>
+    </div>
+    <details class="bp-key no-print">
+      <summary>How to read the drawing</summary>
+      <ul>
+        {% for key in ['entrance', 'keys', 'mailroom', 'files', 'desks', 'reception', 'equipment'] %}{% set r = bp.rooms[key] %}
+        <li><b>{{ r.name }}</b> = {{ r.real }}. {{ r.plain }}</li>
+        {% endfor %}
+      </ul>
+    </details>
+  </div>
+
+  <div class="bp-sheet">
+    <div class="bp-stamp {{ 'ok' if not bp.problems else 'bad' }}" aria-hidden="true">
+      <b>{{ 'Passed inspection' if not bp.problems else 'Action required' }}</b>
+      <span>{{ scanned_at|date }} · {{ bp.problems }} note{{ 's' if bp.problems != 1 }}</span>
+    </div>
+    <p class="bp-swipe" aria-hidden="true">Swipe sideways to see the whole office</p>
+    <div class="bp-scroll">
+    <svg class="bp-plan" viewBox="-60 -60 1120 790" role="group" aria-labelledby="bp-svg-title bp-svg-desc">
+      <title id="bp-svg-title">Floor plan of {{ tenant_name }}'s Microsoft 365, drawn as an office</title>
+      <desc id="bp-svg-desc">{{ bp.problems }} problem{{ 's' if bp.problems != 1 }} marked with numbers. The same notes are listed in writing below the drawing.</desc>
+      <defs>
+        <pattern id="bp-hatch-fail" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line class="hatch-fail" x1="0" y1="0" x2="0" y2="10"/>
+        </pattern>
+        <pattern id="bp-hatch-warn" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line class="hatch-warn" x1="0" y1="0" x2="0" y2="14"/>
+        </pattern>
+        <marker id="bp-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path class="bp-arrowhead" d="M0 0L10 5L0 10z"/>
+        </marker>
+      </defs>
+
+      {# ---- room tints (behind everything) #}
+      {% for key, g in GEO.items() %}{% set r = bp.rooms[key] %}
+      <g class="bp-room st-{{ r.status }}" data-room="{{ key }}">
+        <title>{{ r.name }} = {{ r.real }} ({{ ST_WORD[r.status] }}). {{ r.plain }}</title>
+        <rect class="bp-room-fill" x="{{ g.x }}" y="{{ g.y }}" width="{{ g.w }}" height="{{ g.h }}"/>
+        <text class="bp-room-name" x="{{ g.x + 16 }}" y="{{ g.y + 30 }}">{{ r.name|upper }}</text>
+        <text class="bp-room-real" x="{{ g.x + 16 }}" y="{{ g.y + 47 }}">{{ r.real|upper }}{% if r.status == 'na' %} · NOT INSPECTED{% endif %}</text>
+      </g>
+      {% endfor %}
+
+      {# ---- walls, with doorways from the open-plan desks into each room #}
+      {%- set WALLS = [
+        ('outer', 'M440 620H20V20H880'), ('outer', 'M930 20H980V620H596'), ('outer', 'M556 620H500'),
+        ('', 'M20 220H120'), ('', 'M170 220H420'), ('', 'M470 220H700'), ('', 'M750 220H980'),
+        ('', 'M20 470H120'), ('', 'M170 470H420'), ('', 'M470 470H700'), ('', 'M750 470H980'),
+        ('', 'M330 20V220'), ('', 'M620 20V220'), ('', 'M330 470V620'), ('', 'M620 470V620')] %}
+      <g class="bp-walls">
+        {% for kind, d in WALLS %}<path class="bp-wall {{ kind }}" pathLength="1" d="{{ d }}"/>
+        {% endfor %}
+      </g>
+      <g class="bp-dims" aria-hidden="true">
+        <path d="M20 -16H980M20 -22V-10M980 -22V-10"/>
+        <text x="500" y="-24">{{ tenant_name }} · digital office</text>
+      </g>
+
+      {# ---- mailroom: three seals (SPF / DMARC / DKIM), and mail leaking out #}
+      <g class="bp-fixture" data-room="mailroom">
+        {% for s in bp.seals %}{% set cx = 110 + loop.index0 * 75 %}
+        <g class="bp-seal st-{{ s.status }}">
+          <circle cx="{{ cx }}" cy="122" r="25"/>
+          <circle class="inner" cx="{{ cx }}" cy="122" r="18"/>
+          <text x="{{ cx }}" y="127">{{ s.label }}</text>
+          {% if s.status == 'fail' %}<path class="broken" d="M{{ cx - 20 }} {{ 142 }}L{{ cx + 20 }} {{ 102 }}"/>{% endif %}
+        </g>
+        {% endfor %}
+        <text class="bp-caption" x="185" y="170">official seals on your letters</text>
+        {% if bp.mail_leak %}
+        <path class="bp-leak" d="M150 206H-22" marker-end="url(#bp-arrow)"/>
+        <rect class="bp-leak-mail" x="-56" y="198" width="26" height="17" rx="2"/>
+        <path class="bp-leak-mail" d="M-56 198L-43 208L-30 198"/>
+        <text class="bp-hand bad" x="34" y="198">copied outside!</text>
+        {% endif %}
+      </g>
+
+      {# ---- equipment room: one laptop per managed device #}
+      <g class="bp-fixture" data-room="equipment">
+        {% if bp.devices %}
+          {% for d in bp.devices['items'] %}
+          <g class="bp-device {{ d.state }}">
+            <rect x="{{ d.x }}" y="{{ d.y }}" width="26" height="17" rx="2"/>
+            <path d="M{{ d.x - 3 }} {{ d.y + 21 }}H{{ d.x + 29 }}"/>
+          </g>
+          {% endfor %}
+          <text class="bp-caption left" x="352" y="196">{{ bp.devices.count }} device{{ 's' if bp.devices.count != 1 }}{% if bp.devices.more %} (first {{ bp.devices['items']|length }} drawn){% endif %}</text>
+        {% else %}
+          <text class="bp-caption left" x="352" y="110">{{ 'No Intune data' if bp.has_facts else RESCAN }}</text>
+        {% endif %}
+      </g>
+
+      {# ---- file room: cabinets, and a street door left open when 'Anyone' links are allowed #}
+      <g class="bp-fixture" data-room="files">
+        {% for i in range(4) %}{% set x = 648 + i * 52 %}
+        <g class="bp-cabinet">
+          <rect x="{{ x }}" y="88" width="40" height="84" rx="2"/>
+          <path d="M{{ x }} 116H{{ x + 40 }}M{{ x }} 144H{{ x + 40 }}M{{ x + 15 }} 102H{{ x + 25 }}M{{ x + 15 }} 130H{{ x + 25 }}M{{ x + 15 }} 158H{{ x + 25 }}"/>
+        </g>
+        {% endfor %}
+        {% if bp.street_door %}
+        <g class="bp-door open bad">
+          <path d="M880 20V-30"/><path class="swing" d="M930 20A50 50 0 0 0 880 -30"/>
+        </g>
+        <g class="bp-paper"><rect x="900" y="-46" width="16" height="20" transform="rotate(-14 908 -36)"/><rect x="938" y="-34" width="16" height="20" transform="rotate(18 946 -24)"/><rect x="964" y="-54" width="16" height="20" transform="rotate(-6 972 -44)"/></g>
+        <text class="bp-hand bad end" x="870" y="-30">files left on the street!</text>
+        {% else %}
+        <path class="bp-door-shut" d="M880 20H930"/>
+        {% endif %}
+      </g>
+
+      {# ---- desks: one per paid license #}
+      <g class="bp-fixture" data-room="desks">
+        {% if bp.desks %}
+          {% for c in bp.desks.cells %}
+          <g class="bp-desk {{ c.kind }}">
+            <rect x="{{ c.x }}" y="{{ c.y }}" width="34" height="22" rx="2"/>
+            {% if c.kind == 'left' %}<path class="mark" d="M{{ c.x + 9 }} {{ c.y + 5 }}l16 12m0 -12l-16 12"/>{% endif %}
+            <circle class="chair" cx="{{ c.x + 17 }}" cy="{{ c.y + 31 }}" r="5"/>
+          </g>
+          {% endfor %}
+          {% if bp.desks.empty %}
+          <text class="bp-hand bad mid" x="560" y="262">{{ bp.desks.empty }} empty desk{{ 's' if bp.desks.empty != 1 }}, still paying rent</text>
+          {% elif bp.desks.idle or bp.desks.left %}
+          <text class="bp-hand warn mid" x="560" y="262">{{ bp.desks.idle + bp.desks.left }} desk{{ 's' if bp.desks.idle + bp.desks.left != 1 }} nobody uses</text>
+          {% endif %}
+        {% else %}
+          <text class="bp-caption left" x="92" y="320">{{ "License data wasn't available" if bp.has_facts else RESCAN }}</text>
+        {% endif %}
+      </g>
+
+      {# ---- master keys: global admins on a key rack; a key without MFA is "under the mat" #}
+      <g class="bp-fixture" data-room="keys">
+        {% if bp['keys'] %}
+          <path class="bp-rack" d="M52 534H{{ [64 + (bp['keys']['items']|length) * 30, 120]|max }}"/>
+          {% for k in bp['keys']['items'] %}
+          <g class="bp-key-icon {{ 'bad' if k.bad else 'ok' }}">
+            <circle cx="{{ k.x + 8 }}" cy="{{ 546 if not k.bad else 552 }}" r="6"/>
+            <path d="M{{ k.x + 8 }} {{ 552 if not k.bad else 558 }}V{{ 580 if not k.bad else 586 }}M{{ k.x + 8 }} {{ 572 if not k.bad else 578 }}h5M{{ k.x + 8 }} {{ 577 if not k.bad else 583 }}h4"/>
+            {% if k.bad %}<rect class="mat" x="{{ k.x - 5 }}" y="588" width="26" height="7" rx="1"/>{% endif %}
+          </g>
+          {% endfor %}
+          {% if bp['keys'].more %}<text class="bp-caption left" x="{{ 64 + 8 * 30 }}" y="572">+{{ bp['keys'].more }}</text>{% endif %}
+          {% if bp['keys']['items']|selectattr('bad')|list %}<text class="bp-hand bad" x="36" y="612">key under the mat!</text>{% endif %}
+        {% else %}
+          <text class="bp-caption left" x="52" y="560">{{ "Admin roles weren't available" if bp.has_facts else RESCAN }}</text>
+        {% endif %}
+      </g>
+
+      {# ---- entrance: the front door's lock is MFA; old sign-in methods are a back door #}
+      <g class="bp-fixture" data-room="entrance">
+        <g class="bp-door st-{{ bp.front_door }}">
+          <path d="M440 620V560"/><path class="swing" d="M500 620A60 60 0 0 0 440 560"/>
+        </g>
+        <g class="bp-lock st-{{ bp.front_door }}" transform="translate(506 588)">
+          <rect x="0" y="8" width="18" height="14" rx="2"/>
+          {% if bp.front_door == 'fail' %}<path d="M4 8V3a5 5 0 0 1 10 0"/>{% else %}<path d="M4 8V4a5 5 0 0 1 10 0V8"/>{% endif %}
+        </g>
+        <text class="bp-small" x="470" y="642">FRONT DOOR</text>
+        {% if bp.back_door_open %}
+        <g class="bp-door open bad"><path d="M596 620V660"/><path class="swing" d="M556 620A40 40 0 0 0 596 660"/></g>
+        <text class="bp-small bad" x="576" y="676">BACK DOOR</text>
+        <text class="bp-hand bad" x="612" y="656">left open!</text>
+        {% else %}
+        <path class="bp-door-shut" d="M556 620H596"/>
+        <text class="bp-small" x="576" y="642">BACK DOOR</text>
+        {% endif %}
+        {% if bp.front_door == 'fail' %}<text class="bp-hand bad end" x="430" y="660">no lock!</text>
+        {% elif bp.front_door == 'warn' %}<text class="bp-hand warn end" x="430" y="660">only some locked</text>{% endif %}
+        <path class="bp-path" d="M470 720V650"/>
+      </g>
+
+      {# ---- reception: visitor passes (guests); old passes that still work are dashed red #}
+      <g class="bp-fixture" data-room="reception">
+        <path class="bp-counter" d="M856 600C866 556 912 540 960 546"/>
+        {% if bp.badges %}
+          {% for b in bp.badges['items'] %}
+          <g class="bp-badge {{ 'bad' if b.stale else 'ok' }}">
+            <rect x="{{ b.x }}" y="{{ b.y }}" width="26" height="18" rx="2"/>
+            <circle cx="{{ b.x + 8 }}" cy="{{ b.y + 9 }}" r="3.5"/>
+            <path d="M{{ b.x + 15 }} {{ b.y + 7 }}h7M{{ b.x + 15 }} {{ b.y + 12 }}h5"/>
+          </g>
+          {% endfor %}
+          <text class="bp-caption left" x="700" y="604">{{ bp.badges.count }} visitor pass{{ 'es' if bp.badges.count != 1 }}{% if bp.badges.more %} (first {{ bp.badges['items']|length }} drawn){% endif %}</text>
+        {% else %}
+          <text class="bp-caption left" x="700" y="560">{{ "Guest data wasn't available" if bp.has_facts else RESCAN }}</text>
+        {% endif %}
+      </g>
+
+      {# ---- outside #}
+      <g class="bp-outside" aria-hidden="true">
+        <path class="bp-street" d="M-40 700H1040"/>
+        <text class="bp-small" x="1000" y="692">STREET</text>
+        <g class="bp-north" transform="translate(1022 36)">
+          <circle r="16"/><path d="M0 -12L6 8L0 3L-6 8Z"/><text y="-22">N</text>
+        </g>
+      </g>
+
+      {# ---- the inspector's numbered marks #}
+      <g class="bp-markers">
+        {% for key, g in GEO.items() %}{% for n in bp.rooms[key].notes %}{% set note = bp.notes[n - 1] %}
+        <a class="bp-marker st-{{ note.status }}" href="#{{ note.check_id }}" data-room="{{ key }}" data-note="{{ n }}">
+          <title>{{ n }}. {{ note.text }}</title>
+          {%- set cx = g.x + g.w - 22 - (loop.length - loop.index) * 28 %}
+          <circle cx="{{ cx }}" cy="{{ g.y + 23 }}" r="12"/>
+          <text x="{{ cx }}" y="{{ g.y + 28 }}">{{ n }}</text>
+        </a>
+        {% endfor %}{% endfor %}
+      </g>
+    </svg>
+    </div>
+
+    <div class="bp-titleblock">
+      <div><span>Client</span><b>{{ tenant_name }}</b></div>
+      <div><span>Drawing</span><b>Digital office, inspected</b></div>
+      <div><span>Date</span><b>{{ scanned_at|date }}</b></div>
+      <div><span>Scale</span><b>{% if bp.desks and bp.desks.per_desk > 1 %}1 desk = {{ bp.desks.per_desk }} licenses{% else %}1 desk = 1 license{% endif %}</b></div>
+      <div><span>Inspector</span><b>Tenvaultix 365 Health Check</b></div>
+    </div>
+
+    {% if bp.desks %}
+    <ul class="bp-legend" aria-label="Desk key">
+      <li><i class="lg used"></i>{{ bp.desks.used }} in use</li>
+      {% if bp.desks.idle %}<li><i class="lg idle"></i>{{ bp.desks.idle }} nobody sat at for 90 days</li>{% endif %}
+      {% if bp.desks.left %}<li><i class="lg left"></i>{{ bp.desks.left }} kept for people who left</li>{% endif %}
+      {% if bp.desks.empty %}<li><i class="lg empty"></i>{{ bp.desks.empty }} empty, still paid for</li>{% endif %}
+    </ul>
+    {% endif %}
+  </div>
+
+  {% if bp.notes %}
+  <div class="bp-notes">
+    <h3>Inspector's notes</h3>
+    <ol>
+      {% for note in bp.notes %}
+      <li class="st-{{ note.status }}" data-room="{{ note.room }}" data-note="{{ note.n }}">
+        <span class="num" aria-hidden="true">{{ note.n }}</span>
+        <span class="txt">{{ note.text }}</span>
+        <a class="see" href="#{{ note.check_id }}">See the fix<span class="sr-only">: {{ note.title }}</span></a>
+      </li>
+      {% endfor %}
+    </ol>
+  </div>
+  {% else %}
+  <p class="bp-clean">Nothing for the inspector to flag. Every room passed.</p>
+  {% endif %}
+</section>

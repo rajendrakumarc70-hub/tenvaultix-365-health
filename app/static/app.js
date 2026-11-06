@@ -41,6 +41,40 @@
     });
   });
 
+  // Blueprint: a numbered mark (or "See the fix") opens that finding; notes and rooms light up together.
+  function openFinding(id) {
+    var target = id && document.getElementById(id);
+    if (target && target.tagName === "DETAILS") target.open = true;
+  }
+  document.addEventListener("click", function (event) {
+    var link = event.target.closest(".blueprint a[href^='#']");
+    if (link) openFinding(decodeURIComponent(link.getAttribute("href").slice(1)));
+  });
+  openFinding(decodeURIComponent(location.hash.slice(1)));
+  window.addEventListener("hashchange", function () { openFinding(decodeURIComponent(location.hash.slice(1))); });
+
+  var plan = document.querySelector(".blueprint");
+  if (plan) {
+    var lit = [];
+    var light = function (room, note) {
+      lit.forEach(function (el) { el.classList.remove("hl"); });
+      lit = [];
+      if (!room) return;
+      plan.querySelectorAll(".bp-room[data-room='" + room + "']").forEach(function (el) { lit.push(el); });
+      plan.querySelectorAll(note ? "[data-note='" + note + "']" : ".bp-notes li[data-room='" + room + "'], .bp-marker[data-room='" + room + "']")
+        .forEach(function (el) { lit.push(el); });
+      lit.forEach(function (el) { el.classList.add("hl"); });
+    };
+    var over = function (event) {
+      var el = event.target.closest("[data-note], [data-room]");
+      if (!el || !plan.contains(el)) return light(null);
+      light(el.getAttribute("data-room"), el.getAttribute("data-note"));
+    };
+    plan.addEventListener("mouseover", over);
+    plan.addEventListener("focusin", over);
+    plan.addEventListener("mouseleave", function () { light(null); });
+  }
+
   // Typed confirmation for destructive actions.
   document.querySelectorAll("form[data-confirm-word]").forEach(function (form) {
     var input = form.querySelector("input[name=confirm]");
