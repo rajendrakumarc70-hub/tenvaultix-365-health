@@ -7,3 +7,5 @@ data/*.db
 data/*.db-*
 *.pem
 *.key
+node_modules/
+.wrangler/

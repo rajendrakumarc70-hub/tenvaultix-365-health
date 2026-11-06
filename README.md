@@ -120,10 +120,36 @@ Test it on the Tenvaultix tenant first, then on a friendly client.
 The owner can add colleagues by email (they sign in with Microsoft and see the reports) and can disconnect,
 which deletes all of that tenant's data immediately.
 
-## Deploy
+## Deploy to Cloudflare (dev link)
 
-The simplest route is the container in `Dockerfile` on **Azure Container Apps** or **App Service for
-Containers**:
+The app runs on **Cloudflare Containers**: a small Worker (`src/worker.ts`) receives every request and
+forwards it to one container built from `Dockerfile`. `wrangler.jsonc` holds the configuration. Containers
+need the **Workers Paid** plan ($5/month).
+
+Every push to `main` runs the tests and deploys (`.github/workflows/deploy.yml`). One-time setup:
+
+1. Cloudflare dashboard > **Manage account > Account API tokens > Create Token**: start from the
+   **Edit Cloudflare Workers** template and add **Account > Containers > Edit**.
+2. Copy your **Account ID** (Workers & Pages overview page).
+3. GitHub repository > **Settings > Secrets and variables > Actions**: add `CLOUDFLARE_API_TOKEN` and
+   `CLOUDFLARE_ACCOUNT_ID`.
+
+The site is then at `https://tenvaultix-365-health.<your-subdomain>.workers.dev`. To deploy by hand instead:
+`npm ci && npx wrangler deploy` (needs Docker running).
+
+Settings: public values go in `vars` in `wrangler.jsonc` (`TVX_BASE_URL`, `TVX_CONTACT_EMAIL`,
+`TVX_BOOKING_URL`); secrets go in with `npx wrangler secret put TVX_SESSION_SECRET` (and `TVX_CLIENT_ID`,
+`TVX_CLIENT_SECRET` once the Microsoft app is registered). The Worker passes them to the container.
+
+**Before real customers:** the container's disk is temporary. It's reset when the container sleeps after 30
+idle minutes or is redeployed, which is fine for a demo but would lose connected tenants and reports. Move the
+database to persistent storage (for example Cloudflare D1, or PostgreSQL) and set a fixed
+`TVX_SESSION_SECRET` before going live. Scheduled scans (`python -m app.cli scan-due`) also need a trigger,
+for example a Cron Trigger on the Worker.
+
+## Deploy elsewhere
+
+The same container also runs on **Azure Container Apps** or **App Service for Containers**:
 
 - Set the environment variables from `.env.example` in the app's configuration (store the certificate or
   secret in Azure Key Vault and reference it).
