@@ -74,7 +74,7 @@ before real customers.
 ### Option A: client secret (testing)
 
 1. **Certificates & secrets → Client secrets → New client secret**.
-2. Description `dev`, expiry **180 days** or **365 days**. Microsoft recommends less than 12 months; the maximum
+2. Description `dev`, expiry **180 days**. Microsoft recommends less than 12 months; the maximum
    is 24.
 3. Select **Add**, then copy the **Value** column straight away. It's shown only once. Don't copy the
    *Secret ID*: using it gives error **AADSTS7000215**.
