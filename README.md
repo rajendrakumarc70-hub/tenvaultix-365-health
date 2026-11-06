@@ -1,5 +1,7 @@
 # Tenvaultix 365 Health Check
 
+**Dev site:** https://tenvaultix-365-health-dashboard.rajendrakumarc70.workers.dev (deployed by Cloudflare on every push to `main`)
+
 A web app that checks a small business's Microsoft 365 tenant for security gaps and wasted licenses, and
 explains each problem in plain English with step-by-step fixes. It's sold as a subscription: one price per
 tenant, a scan every week (or every day on higher plans).
