@@ -72,7 +72,10 @@ $env:TVX_SESSION_SECRET="dev"
 .venv\Scripts\python -m uvicorn app.main:app
 ```
 
-On an **Android tablet** with Termux (the first install compiles two packages and can take 10–30 minutes):
+On an **Android tablet** with Termux, `bash scripts/termux-host.sh` runs the app **and shares it on the internet**
+through a Cloudflare Quick Tunnel (a temporary `https://….trycloudflare.com` link, no Cloudflare account needed).
+Add email addresses to let only those people in: `bash scripts/termux-host.sh you@company.com`. Install the
+packages first (the first install compiles two packages and can take 10–30 minutes):
 
 ```bash
 pkg install -y git python rust binutils python-cryptography

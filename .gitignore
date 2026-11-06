@@ -9,3 +9,5 @@ data/*.db-*
 *.key
 node_modules/
 .wrangler/
+data/.session-secret
+app.log
