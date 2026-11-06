@@ -126,13 +126,15 @@ The app runs on **Cloudflare Containers**: a small Worker (`src/worker.ts`) rece
 forwards it to one container built from `Dockerfile`. `wrangler.jsonc` holds the configuration. Containers
 need the **Workers Paid** plan ($5/month).
 
-Every push to `main` runs the tests and deploys (`.github/workflows/deploy.yml`). One-time setup:
+**Easiest: Cloudflare builds from GitHub (no tokens).** Cloudflare dashboard > **Workers & Pages > Create
+application > Import a repository**, authorize Cloudflare's GitHub app, pick this repository and keep the
+default deploy command (`npx wrangler deploy`). Every push to `main` then builds the container on Cloudflare
+and deploys it. GitHub Actions (`.github/workflows/deploy.yml`) still runs the tests on every push.
 
-1. Cloudflare dashboard > **Manage account > Account API tokens > Create Token**: start from the
-   **Edit Cloudflare Workers** template and add **Account > Containers > Edit**.
-2. Copy your **Account ID** (Workers & Pages overview page).
-3. GitHub repository > **Settings > Secrets and variables > Actions**: add `CLOUDFLARE_API_TOKEN` and
-   `CLOUDFLARE_ACCOUNT_ID`.
+**Alternative: deploy from GitHub Actions.** Create a Cloudflare API token (template **Edit Cloudflare
+Workers**, plus **Account > Containers > Edit**) and add it with your Account ID as the repository secrets
+`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The workflow's deploy job only runs when that secret
+exists, so don't use both options at once.
 
 The site is then at `https://tenvaultix-365-health.<your-subdomain>.workers.dev`. To deploy by hand instead:
 `npm ci && npx wrangler deploy` (needs Docker running).

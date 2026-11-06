@@ -27,19 +27,29 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
 
+  # Optional: only runs when the CLOUDFLARE_API_TOKEN secret is set. Without it, Cloudflare's own Git
+  # integration (Workers Builds) builds and deploys on each push instead.
   deploy:
     needs: test
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - if: env.HAS_TOKEN != 'true'
+        run: echo "No CLOUDFLARE_API_TOKEN secret, so Cloudflare Workers Builds handles deploys." >> "$GITHUB_STEP_SUMMARY"
+      - if: env.HAS_TOKEN == 'true'
+        uses: actions/checkout@v4
+      - if: env.HAS_TOKEN == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - if: env.HAS_TOKEN == 'true'
+        run: npm ci
       # Builds the Docker image, pushes it to Cloudflare and deploys the Worker in front of it.
       - name: Deploy Worker and container
+        if: env.HAS_TOKEN == 'true'
         id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
@@ -47,4 +57,5 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy --containers-rollout=immediate
       - name: Show the link
+        if: env.HAS_TOKEN == 'true'
         run: echo "Live at ${{ steps.deploy.outputs.deployment-url }}" >> "$GITHUB_STEP_SUMMARY"
