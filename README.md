@@ -136,7 +136,7 @@ Workers**, plus **Account > Containers > Edit**) and add it with your Account ID
 `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The workflow's deploy job only runs when that secret
 exists, so don't use both options at once.
 
-The site is then at `https://tenvaultix-365-health.<your-subdomain>.workers.dev`. To deploy by hand instead:
+The site is then at `https://tenvaultix-365-health-dashboard.<your-subdomain>.workers.dev`. To deploy by hand instead:
 `npm ci && npx wrangler deploy` (needs Docker running).
 
 Settings: public values go in `vars` in `wrangler.jsonc` (`TVX_BASE_URL`, `TVX_CONTACT_EMAIL`,
