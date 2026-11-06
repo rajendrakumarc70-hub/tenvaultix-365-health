@@ -55,16 +55,22 @@ class Settings:
     https_only: bool
     contact_email: str
     booking_url: str
+    cert_private_key: str = ""  # PEM text, for hosts that pass secrets as variables (Cloudflare)
+
+    @property
+    def has_certificate(self) -> bool:
+        return bool((self.cert_private_key or self.cert_path) and self.cert_thumbprint)
 
     @property
     def microsoft_configured(self) -> bool:
-        has_credential = bool(self.client_secret or (self.cert_path and self.cert_thumbprint))
+        has_credential = bool(self.client_secret or self.has_certificate)
         return bool(self.client_id and self.base_url and has_credential)
 
     def client_credential(self):
         """Certificate (preferred in production) or client secret, in the form MSAL expects."""
-        if self.cert_path and self.cert_thumbprint:
-            return {"private_key": Path(self.cert_path).read_text(), "thumbprint": self.cert_thumbprint}
+        if self.has_certificate:
+            key = self.cert_private_key or Path(self.cert_path).read_text()
+            return {"private_key": key, "thumbprint": self.cert_thumbprint.replace(":", "").upper()}
         return self.client_secret
 
     def url(self, path: str) -> str:
@@ -90,4 +96,5 @@ def load_settings() -> Settings:
         https_only=base_url.startswith("https://"),
         contact_email=_env("TVX_CONTACT_EMAIL"),
         booking_url=_env("TVX_BOOKING_URL"),
+        cert_private_key=_env("TVX_CERT_PRIVATE_KEY").replace("\\n", "\n"),
     )

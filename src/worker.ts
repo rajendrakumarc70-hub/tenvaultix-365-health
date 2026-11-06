@@ -9,6 +9,8 @@ interface Env {
 	TVX_SESSION_SECRET?: string;
 	TVX_CLIENT_ID?: string;
 	TVX_CLIENT_SECRET?: string;
+	TVX_CERT_PRIVATE_KEY?: string;
+	TVX_CERT_THUMBPRINT?: string;
 	TVX_CONTACT_EMAIL?: string;
 	TVX_BOOKING_URL?: string;
 }
@@ -19,6 +21,8 @@ const PASS_THROUGH = [
 	"TVX_SESSION_SECRET",
 	"TVX_CLIENT_ID",
 	"TVX_CLIENT_SECRET",
+	"TVX_CERT_PRIVATE_KEY",
+	"TVX_CERT_THUMBPRINT",
 	"TVX_CONTACT_EMAIL",
 	"TVX_BOOKING_URL",
 ] as const;

@@ -2,6 +2,8 @@
 
 **Dev site:** https://tenvaultix-365-health-dashboard.rajendrakumarc70.workers.dev (deployed by Cloudflare on every push to `main`)
 
+**Guides:** [Going live: approvals checklist](docs/APPROVALS_CHECKLIST.md) · [Register the app in Microsoft Entra](docs/AZURE_APP_REGISTRATION.md)
+
 A web app that checks a small business's Microsoft 365 tenant for security gaps and wasted licenses, and
 explains each problem in plain English with step-by-step fixes. It's sold as a subscription: one price per
 tenant, a scan every week (or every day on higher plans).
@@ -142,8 +144,8 @@ The site is then at `https://tenvaultix-365-health-dashboard.<your-subdomain>.wo
 `npm ci && npx wrangler deploy` (needs Docker running).
 
 Settings: public values go in `vars` in `wrangler.jsonc` (`TVX_BASE_URL`, `TVX_CONTACT_EMAIL`,
-`TVX_BOOKING_URL`); secrets go in with `npx wrangler secret put TVX_SESSION_SECRET` (and `TVX_CLIENT_ID`,
-`TVX_CLIENT_SECRET` once the Microsoft app is registered). The Worker passes them to the container.
+`TVX_BOOKING_URL`); secrets go in with `npx wrangler secret put` or the dashboard (`TVX_SESSION_SECRET`, `TVX_CLIENT_ID`, and
+`TVX_CLIENT_SECRET` or `TVX_CERT_THUMBPRINT` + `TVX_CERT_PRIVATE_KEY` once the Microsoft app is registered). The Worker passes them to the container.
 
 **Before real customers:** the container's disk is temporary. It's reset when the container sleeps after 30
 idle minutes or is redeployed, which is fine for a demo but would lose connected tenants and reports. Move the
