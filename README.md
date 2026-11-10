@@ -1,6 +1,6 @@
 # Tenvaultix 365 Health Check
 
-**Dev site:** https://tenvaultix-365-health.rajendrakumarc70.workers.dev (deployed by Cloudflare on every push to `main`)
+**Dev site:** https://tenvaultix-365-health.onrender.com/demo (Render free plan, redeployed on every push to `main`; the first visit after 15 idle minutes takes about a minute)
 
 **Guides:** [Going live: approvals checklist](docs/APPROVALS_CHECKLIST.md) · [Register the app in Microsoft Entra](docs/AZURE_APP_REGISTRATION.md)
 
@@ -128,7 +128,22 @@ Test it on the Tenvaultix tenant first, then on a friendly client.
 The owner can add colleagues by email (they sign in with Microsoft and see the reports) and can disconnect,
 which deletes all of that tenant's data immediately.
 
-## Deploy to Cloudflare (dev link)
+## Deploy to Render (free, the current dev site)
+
+Render runs the app straight from the `Dockerfile`, no other files needed:
+
+1. **render.com** → sign in with GitHub → **New → Web Service** → pick this repository.
+2. Render detects the Dockerfile. Choose instance type **Free** and create the service.
+3. **Environment**: add `TVX_BASE_URL` = `https://tenvaultix-365-health.onrender.com` and `TVX_SESSION_SECRET` (tap **Generate**). Add the Microsoft
+   values (`TVX_CLIENT_ID`, then `TVX_CLIENT_SECRET` or the certificate pair) once the app is registered
+   ([guide](docs/AZURE_APP_REGISTRATION.md), step 6).
+4. With **Auto-Deploy** on, every push to `main` redeploys.
+
+Free instances sleep after 15 minutes without visitors (the next visit takes about a minute) and their disk is
+temporary, so connected tenants and reports are lost on restart: fine for demos, not for customers (see
+"Before real customers" below). A paid instance stays awake.
+
+## Deploy to Cloudflare (needs Workers Paid)
 
 The app runs on **Cloudflare Containers**: a small Worker (`src/worker.ts`) receives every request and
 forwards it to one container built from `Dockerfile`. `wrangler.jsonc` holds the configuration. Containers

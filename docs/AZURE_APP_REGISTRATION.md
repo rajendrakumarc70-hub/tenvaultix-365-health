@@ -5,7 +5,7 @@ company's Microsoft 365), not in a customer's. It takes about 20 minutes.
 
 **You need:** a work account in the Tenvaultix tenant with at least the **Application Developer** role (a Global
 Administrator also works), and the site address. For the dev site that's
-`https://tenvaultix-365-health.rajendrakumarc70.workers.dev`. Later you'll add your own domain the same
+`https://tenvaultix-365-health.onrender.com`. Later you'll add your own domain the same
 way.
 
 ---
@@ -20,7 +20,7 @@ way.
    organizational directory (Any Microsoft Entra ID tenant - Multitenant)"*. Don't choose the option that also
    includes personal Microsoft accounts.
 6. **Redirect URI:** platform **Web**, address:
-   `https://tenvaultix-365-health.rajendrakumarc70.workers.dev/auth/callback`
+   `https://tenvaultix-365-health.onrender.com/auth/callback`
 7. Select **Register**.
 8. On the **Overview** page, copy the **Application (client) ID**. You need it in step 6.
 
@@ -28,7 +28,7 @@ way.
 
 1. In the app, open **Authentication** (on some screens **Authentication → Redirect URI configuration**).
 2. Under **Web → Redirect URIs**, select **Add URI** and enter:
-   `https://tenvaultix-365-health.rajendrakumarc70.workers.dev/connect/callback`
+   `https://tenvaultix-365-health.onrender.com/connect/callback`
 3. Leave **Access tokens** and **ID tokens** (implicit grant) **unticked**. The app doesn't use them.
 4. Select **Save**.
 
@@ -36,8 +36,8 @@ You should now have exactly these two Web redirect URIs:
 
 | Redirect URI | Used for |
 |---|---|
-| `…workers.dev/auth/callback` | Signing in with Microsoft |
-| `…workers.dev/connect/callback` | A customer's admin approving access |
+| `…onrender.com/auth/callback` | Signing in with Microsoft |
+| `…onrender.com/connect/callback` | A customer's admin approving access |
 
 The address must match exactly: `https`, no trailing slash. A mismatch gives error **AADSTS50011**.
 
@@ -92,7 +92,7 @@ openssl x509 -in health-check.crt -noout -fingerprint -sha1
 
 1. **Certificates & secrets → Certificates → Upload certificate** and upload **`health-check.crt`** (the public
    part). Entra shows its **thumbprint**, which matches the fingerprint printed above (without colons).
-2. Keep **`health-check.key`** private. It goes into Cloudflare as a secret in step 6 and nowhere else. Don't
+2. Keep **`health-check.key`** private. It goes into the app's hosting settings as a secret in step 6 and nowhere else. Don't
    email it or commit it to GitHub.
 3. For a long-term set-up, create and renew the certificate in **Azure Key Vault** instead. Microsoft recommends
    a certificate from a trusted certificate authority for production.
@@ -102,7 +102,7 @@ openssl x509 -in health-check.crt -noout -fingerprint -sha1
 1. Open **Branding & properties**.
 2. **Logo:** upload `entra-logo-215.png` from the package (a 215 × 215 Tenvaultix shield).
 3. **Home page URL:** the site address.
-4. **Privacy statement URL:** `https://…workers.dev/privacy` (later your own domain).
+4. **Privacy statement URL:** `https://…onrender.com/privacy` (later your own domain).
 5. **Terms of service URL:** add once your lawyer has written the Terms page.
 6. **Publisher domain:** choose your company domain, which must already be verified in the tenant
    ([approvals checklist](APPROVALS_CHECKLIST.md), step 2). It can't be `onmicrosoft.com`.
@@ -112,11 +112,11 @@ openssl x509 -in health-check.crt -noout -fingerprint -sha1
    You can do this later; until then customers see "Unverified".
 8. **Owners:** add a second Tenvaultix admin as an owner, so you're not locked out if one person leaves.
 
-## Step 6: Give the values to the app (Cloudflare)
+## Step 6: Give the values to the app (Render)
 
-In **Cloudflare → Workers & Pages → tenvaultix-365-health → Settings → Variables and Secrets → Add**,
-add each of these with type **Secret**. Secrets are kept when the app redeploys; plain variables set in the
-dashboard can be replaced by the next deploy.
+In **Render → tenvaultix-365-health → Environment → Add Environment Variable**, add each of these. Render keeps
+them private and passes them to the app. (On Cloudflare instead: **Workers & Pages → tenvaultix-365-health →
+Settings → Variables and Secrets**, type **Secret**.)
 
 | Name | Value |
 |---|---|
@@ -124,13 +124,11 @@ dashboard can be replaced by the next deploy.
 | `TVX_CLIENT_SECRET` | Secret **value** from step 4A (skip if you use a certificate) |
 | `TVX_CERT_THUMBPRINT` | Certificate thumbprint from step 4B (certificate only) |
 | `TVX_CERT_PRIVATE_KEY` | Entire contents of `health-check.key`, including the BEGIN/END lines (certificate only) |
-| `TVX_SESSION_SECRET` | A long random string, e.g. the output of `openssl rand -base64 48` |
+| `TVX_SESSION_SECRET` | A long random string. On Render, tap **Generate** |
+| `TVX_BASE_URL` | `https://tenvaultix-365-health.onrender.com` (no slash at the end) |
 
-`TVX_BASE_URL` (the site address) is already set in `wrangler.jsonc`.
-
-The app reads these values when its container starts. To make it pick them up, trigger a fresh deploy
-(Cloudflare **Deployments → Retry build**, or push any change to `main`), or leave the site unvisited for 30 minutes
-so the container sleeps and restarts on the next visit.
+Saving environment variables on Render restarts the app with the new values. (On Cloudflare, `TVX_BASE_URL` is
+set in `wrangler.jsonc`, and a fresh deploy picks up new secrets.)
 
 ## Step 7: Test it
 
@@ -149,13 +147,13 @@ so the container sleeps and restarts on the next visit.
 | AADSTS7000215 (invalid client secret) | Secret ID used instead of value, or expired | Create a new secret, copy the **Value** |
 | AADSTS90094 / "Need admin approval" | The person isn't an admin | A Global Administrator must connect |
 | "Unverified" on the approval screen | Publisher verification not done yet | Step 5.7 |
-| Sign-in page says "isn't set up yet" | The app can't see the Cloudflare secrets | Step 6, then redeploy |
+| Sign-in page says "isn't set up yet" | The app can't see the values from step 6 | Step 6, then check **/setup** |
 
 ## Later: your own domain
 
 When the site moves to, for example, `https://health.yourcompany.com`:
 
-1. Add the domain to the Worker in Cloudflare (**Settings → Domains & Routes → Add → Custom domain**).
+1. Add the domain in Render (**Settings → Custom Domains → Add**) and create the DNS record Render shows.
 2. Add `https://health.yourcompany.com/auth/callback` and `/connect/callback` to step 2's redirect URIs.
-3. Change `TVX_BASE_URL` in `wrangler.jsonc` and push.
+3. Change the `TVX_BASE_URL` environment variable to the new address.
 4. Update the home page and privacy URLs in step 5.

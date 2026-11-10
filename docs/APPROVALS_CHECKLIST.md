@@ -10,7 +10,7 @@ Everything Tenvaultix needs before charging real customers for the 365 Health Ch
 | 3 | App registered in Microsoft Entra | You | Required | Free | 20 minutes ([guide](AZURE_APP_REGISTRATION.md)) |
 | 4 | Publisher verification (blue "verified" badge) | Microsoft, automatic once 1–3 are done | Required in practice | Free | Minutes |
 | 5 | Each customer's admin approves read-only access | The customer's Global Administrator | Required, per customer | Free | 2 minutes, built into the app |
-| 6 | Hosting with permanent storage and your own web address | You (Cloudflare or Azure) | Required | Cloudflare Workers Paid $5/month + usage | 1–2 days of work |
+| 6 | Hosting with permanent storage and your own web address | You (Render, Cloudflare or Azure) | Required | Render free for demos; a paid always-on plan for customers (e.g. Render paid instance or Cloudflare Workers Paid $5/month + usage) | 1–2 days of work |
 | 7 | Privacy policy, Terms of Service and Data Processing Agreement | Your lawyer | Required | Lawyer's fee | 1–2 weeks |
 | 8 | Payment gateway account (Razorpay in India, Stripe abroad) | Razorpay / Stripe (business KYC) | Required to take card payments | Per-transaction fees | A few days |
 | 9 | GST registration and invoicing set-up | Your chartered accountant | Required (ask your CA) | CA's fee | Varies |
