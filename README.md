@@ -1,6 +1,6 @@
 # Tenvaultix 365 Health Check
 
-**Dev site:** https://tenvaultix-365-health-dashboard.rajendrakumarc70.workers.dev (deployed by Cloudflare on every push to `main`)
+**Dev site:** https://tenvaultix-365-health.rajendrakumarc70.workers.dev (deployed by Cloudflare on every push to `main`)
 
 **Guides:** [Going live: approvals checklist](docs/APPROVALS_CHECKLIST.md) · [Register the app in Microsoft Entra](docs/AZURE_APP_REGISTRATION.md)
 
@@ -144,8 +144,14 @@ Workers**, plus **Account > Containers > Edit**) and add it with your Account ID
 `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The workflow's deploy job only runs when that secret
 exists, so don't use both options at once.
 
-The site is then at `https://tenvaultix-365-health-dashboard.<your-subdomain>.workers.dev`. To deploy by hand instead:
+The site is then at `https://tenvaultix-365-health.<your-subdomain>.workers.dev`. To deploy by hand instead:
 `npm ci && npx wrangler deploy` (needs Docker running).
+
+**If the build fails with `A request to the Cloudflare API (/accounts/…/containers/me) failed`** (and the site
+says *"There is no container application assigned to this Durable Object namespace"*), Cloudflare refused to set
+up the container. Check two things: the account is on **Workers Paid** (Containers aren't available on the Free
+plan), and the build's API token has **Account > Containers > Edit** (**My Profile > API Tokens**, edit the token
+the Worker's **Settings > Build** uses). Then select **Retry build**.
 
 Settings: public values go in `vars` in `wrangler.jsonc` (`TVX_BASE_URL`, `TVX_CONTACT_EMAIL`,
 `TVX_BOOKING_URL`); secrets go in with `npx wrangler secret put` or the dashboard (`TVX_SESSION_SECRET`, `TVX_CLIENT_ID`, and

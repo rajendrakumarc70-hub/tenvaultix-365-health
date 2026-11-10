@@ -5,7 +5,7 @@ company's Microsoft 365), not in a customer's. It takes about 20 minutes.
 
 **You need:** a work account in the Tenvaultix tenant with at least the **Application Developer** role (a Global
 Administrator also works), and the site address. For the dev site that's
-`https://tenvaultix-365-health-dashboard.rajendrakumarc70.workers.dev`. Later you'll add your own domain the same
+`https://tenvaultix-365-health.rajendrakumarc70.workers.dev`. Later you'll add your own domain the same
 way.
 
 ---
@@ -20,7 +20,7 @@ way.
    organizational directory (Any Microsoft Entra ID tenant - Multitenant)"*. Don't choose the option that also
    includes personal Microsoft accounts.
 6. **Redirect URI:** platform **Web**, address:
-   `https://tenvaultix-365-health-dashboard.rajendrakumarc70.workers.dev/auth/callback`
+   `https://tenvaultix-365-health.rajendrakumarc70.workers.dev/auth/callback`
 7. Select **Register**.
 8. On the **Overview** page, copy the **Application (client) ID**. You need it in step 6.
 
@@ -28,7 +28,7 @@ way.
 
 1. In the app, open **Authentication** (on some screens **Authentication → Redirect URI configuration**).
 2. Under **Web → Redirect URIs**, select **Add URI** and enter:
-   `https://tenvaultix-365-health-dashboard.rajendrakumarc70.workers.dev/connect/callback`
+   `https://tenvaultix-365-health.rajendrakumarc70.workers.dev/connect/callback`
 3. Leave **Access tokens** and **ID tokens** (implicit grant) **unticked**. The app doesn't use them.
 4. Select **Save**.
 
@@ -114,7 +114,7 @@ openssl x509 -in health-check.crt -noout -fingerprint -sha1
 
 ## Step 6: Give the values to the app (Cloudflare)
 
-In **Cloudflare → Workers & Pages → tenvaultix-365-health-dashboard → Settings → Variables and Secrets → Add**,
+In **Cloudflare → Workers & Pages → tenvaultix-365-health → Settings → Variables and Secrets → Add**,
 add each of these with type **Secret**. Secrets are kept when the app redeploys; plain variables set in the
 dashboard can be replaced by the next deploy.
 

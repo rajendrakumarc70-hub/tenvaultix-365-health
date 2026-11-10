@@ -1,6 +1,6 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "tenvaultix-365-health-dashboard",
+	"name": "tenvaultix-365-health",
 	"main": "src/worker.ts",
 	"compatibility_date": "2026-11-01",
 	"observability": { "enabled": true },
@@ -18,7 +18,7 @@
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["HealthApp"] }],
 	// Public settings. Secrets (TVX_SESSION_SECRET, TVX_CLIENT_SECRET) are set with `wrangler secret put`.
 	"vars": {
-		"TVX_BASE_URL": "https://tenvaultix-365-health-dashboard.rajendrakumarc70.workers.dev",
+		"TVX_BASE_URL": "https://tenvaultix-365-health.rajendrakumarc70.workers.dev",
 		"TVX_CONTACT_EMAIL": "",
 		"TVX_BOOKING_URL": ""
 	}
