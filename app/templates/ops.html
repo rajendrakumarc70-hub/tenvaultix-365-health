@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Operations · Tenvaultix{% endblock %}
+{% block head %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+<section class="page-head on-dark">
+  <div class="wrap">
+    <div class="head-row">
+      <div>
+        <span class="eyebrow">Tenvaultix team only</span>
+        <h1>Operations</h1>
+        <p class="sub">Errors across every connected company. Version {{ settings.version or 'unknown' }}.</p>
+      </div>
+      <form method="post" action="/ops/test">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn btn-sky" type="submit">Test the app's Microsoft credential</button>
+      </form>
+    </div>
+  </div>
+</section>
+<div class="wrap">
+  <section class="report-section">
+    <h2>Connected companies <span class="count">{{ tenants|length }}</span></h2>
+    <div class="card table-wrap">
+      {% if tenants %}
+      <table class="table">
+        <thead><tr><th>Company</th><th>Plan</th><th>Last scan</th><th>Errors kept</th></tr></thead>
+        <tbody>
+        {% for t in tenants %}
+          <tr>
+            <td>{{ t.name or 'Not named yet' }}<br><span class="small muted">{{ t.id }}</span></td>
+            <td>{{ plans.get(t.plan, (t.plan,))[0] }}</td>
+            <td>{% if t.last %}<span class="status-dot {{ t.last.status }}"></span>{{ t.last.started_at|date }}{% if t.last.status == 'failed' %}<br><span class="small muted">{{ t.last.error }}</span>{% endif %}{% else %}<span class="muted">Never</span>{% endif %}</td>
+            <td>{{ t.problem_count }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="muted">No companies connected yet.</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="report-section">
+    <h2>All errors <span class="count">newest first, the last 100</span></h2>
+    <div class="card table-wrap">
+      {% if recent %}
+      <table class="table">
+        <thead><tr><th>When</th><th>Where</th><th>What happened</th><th>Details</th></tr></thead>
+        <tbody>
+        {% for p in recent %}{% set h = hint(p.code) %}
+          <tr>
+            <td>{{ p.at|date }}</td>
+            <td>{{ p.area }}{% if p.tenant_id %}<br><span class="small muted">{{ p.tenant_id }}</span>{% endif %}</td>
+            <td>{{ h.title }} <span class="chip">{{ p.code }}</span><br><span class="small">{{ h.advice }}</span></td>
+            <td class="small muted wrap-anywhere">{{ p.detail }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="muted">No errors recorded.</p>{% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}

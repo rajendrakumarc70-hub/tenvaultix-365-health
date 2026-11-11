@@ -24,6 +24,22 @@
     </table>
   </div>
 
+  <h2 id="problems">Recent problems</h2>
+  {% if recent_problems %}
+  <p>Errors this server hit recently, newest first, with what to do. Problems inside a customer's tenant are shown on their own dashboard instead.</p>
+  <div class="health">
+    {% for p in recent_problems %}
+    <div class="health-item bad">
+      <p class="health-title">{{ p.title }} <span class="chip">{{ p.code }}</span></p>
+      <p>{{ p.advice }}</p>
+      <p class="small muted">{{ p.count }} time{{ 's' if p.count != 1 }} · last {{ p.last|date }} · {{ p.area }}</p>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No problems recorded since this server started.</p>
+  {% endif %}
+
   <h2>1. Register the app in Microsoft Entra</h2>
   <ol>
     <li>In your own Tenvaultix tenant, open Microsoft Entra admin center &gt; App registrations &gt; New registration.</li>
@@ -61,6 +77,7 @@
         <tr><td class="perm-name">TVX_BASE_URL</td><td>Public address of this site, for example https://health.example.com</td></tr>
         <tr><td class="perm-name">TVX_SESSION_SECRET</td><td>Long random string used to sign session cookies</td></tr>
         <tr><td class="perm-name">TVX_CONTACT_EMAIL / TVX_BOOKING_URL</td><td>Where "Ask Tenvaultix to fix this" buttons go</td></tr>
+        <tr><td class="perm-name">TVX_OPS_EMAILS + TVX_OPS_TENANT_ID</td><td>Optional. Comma-separated work emails of the Tenvaultix team who may open <code>/ops</code> (every error, every connected company, and a credential test), and the Directory (tenant) ID they sign in from. Both are needed.</td></tr>
       </tbody>
     </table>
   </div>

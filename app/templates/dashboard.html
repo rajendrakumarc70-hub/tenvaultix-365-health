@@ -77,6 +77,61 @@
   </section>
   {% endif %}
 
+  <section class="report-section" id="azure">
+    <h2>Azure spend <span class="count">read-only, from Azure Cost Management</span></h2>
+    <div class="card cost-summary">
+      {% if costs and costs.state == 'ok' %}
+      <div><b class="cost-big">{{ costs.total|cost(costs.currency) }}</b><span class="muted"> spent in {{ costs.month }}{% if costs.projected is not none %} · about {{ costs.projected|cost(costs.currency) }} by month end{% endif %}</span></div>
+      <a class="btn btn-primary btn-sm" href="/app/azure">See Azure spend</a>
+      {% elif costs and costs.state == 'no_access' %}
+      <p>Azure costs aren't shared with Tenvaultix yet. It takes about two minutes to give read-only access.</p>
+      <a class="btn btn-primary btn-sm" href="/app/azure#share">Show me how</a>
+      {% else %}
+      <p>See what your company spends on Azure this month, per day, per service and per subscription.</p>
+      <a class="btn btn-primary btn-sm" href="/app/azure">See Azure spend</a>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="report-section" id="health">
+    <h2>Connection health <span class="count">is everything working on our side and Microsoft's?</span></h2>
+    <div class="card">
+      <div class="health">
+        {% for kind, title, text in health["items"] %}
+        <div class="health-item {{ kind }}">
+          <p class="health-title">{{ title }}</p>
+          {% if text %}<p>{{ text }}</p>{% endif %}
+        </div>
+        {% else %}
+        <div class="health-item"><p class="health-title">No scans yet</p></div>
+        {% endfor %}
+      </div>
+      {% if health.problems %}
+      <h3 class="section-gap">Recent errors</h3>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Last seen</th><th>What happened</th><th>What to do</th><th>Times</th></tr></thead>
+          <tbody>
+          {% for p in health.problems %}
+            <tr>
+              <td>{{ p.last|date }}</td>
+              <td>{{ p.title }} <span class="chip">{{ p.code }}</span>{% if p.detail %}<br><span class="small muted">{{ p.detail[:160] }}</span>{% endif %}</td>
+              <td>{{ p.advice }}</td>
+              <td>{{ p.count }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+      {% if health.reapprove and role == 'owner' %}
+      <div class="btn-row section-gap">
+        <a class="btn btn-primary btn-sm" href="/connect/start">Approve the latest permissions</a>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
   <section class="report-section">
     <h2>Scan history</h2>
     <div class="card table-wrap">

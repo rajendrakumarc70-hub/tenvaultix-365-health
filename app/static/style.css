@@ -515,3 +515,40 @@ input:focus-visible, .btn:focus-visible, summary:focus-visible, a:focus-visible 
 }
 .message h1 { font-size: 1.6rem; }
 .findings + .note { margin-top: 12px; }
+
+/* ---- connection health and problems */
+.health { display: grid; gap: 10px; }
+.health-item { border-left: 4px solid var(--na); padding: 8px 14px; background: var(--na-bg); border-radius: 0 8px 8px 0; }
+.health-item p { margin: 0; }
+.health-item p + p { margin-top: 4px; }
+.health-item.good { border-left-color: var(--good); background: var(--good-bg); }
+.health-item.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.health-item.bad { border-left-color: var(--bad); background: var(--bad-bg); }
+.health-title { font-weight: 600; }
+.wrap-anywhere { overflow-wrap: anywhere; max-width: 38ch; }
+
+/* ---- Azure spend */
+.cost-kpis { margin-top: 24px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.cost-chart { margin: 0; position: relative; }
+.chart-scroll { overflow-x: auto; }
+.cost-chart svg { width: 100%; min-width: 560px; height: auto; display: block; }
+.cost-note { margin-top: 16px; }
+.cost-chart .bar { fill: var(--blue); }
+.cost-chart .hit { fill: transparent; cursor: default; }
+.cost-chart .day:hover .bar { fill: var(--navy-700); }
+.cost-chart .grid { stroke: var(--line-2); stroke-width: 1; }
+.cost-chart .baseline { stroke: var(--line); stroke-width: 1; }
+.cost-chart .axis { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart-tip { position: fixed; z-index: 30; pointer-events: none; background: var(--ink); color: #fff; font-size: 13px;
+  padding: 6px 10px; border-radius: 8px; box-shadow: var(--shadow); white-space: nowrap; }
+.two-col { display: grid; gap: 0 24px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.cost-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.cost-row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.cost-row b { font-variant-numeric: tabular-nums; }
+.cost-bar { display: block; margin-top: 4px; }
+.cost-bar .track { fill: var(--line-2); }
+.cost-bar .fill { fill: var(--blue); }
+.num-table td:last-child, .num-table th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.cost-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.cost-summary p { margin: 0; }
+.cost-big { font-size: 28px; }

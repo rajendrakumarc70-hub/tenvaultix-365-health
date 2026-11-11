@@ -60,7 +60,21 @@ CREATE TABLE IF NOT EXISTS fixes (
     undone_by INTEGER
 );
 CREATE INDEX IF NOT EXISTS fixes_by_tenant ON fixes(tenant_id, id);
+CREATE TABLE IF NOT EXISTS problems (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at TEXT NOT NULL,
+    area TEXT NOT NULL,
+    code TEXT NOT NULL,
+    detail TEXT,
+    tenant_id TEXT
+);
+CREATE TABLE IF NOT EXISTS azure_costs (
+    tenant_id TEXT PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+    fetched_at TEXT NOT NULL,
+    data TEXT NOT NULL
+);
 """
+KEEP_PROBLEMS = 500
 STALE_SCAN = timedelta(minutes=30)
 
 
@@ -123,6 +137,7 @@ class Store:
     def delete_tenant(self, tenant_id: str) -> None:
         with self._conn() as db:
             db.execute("DELETE FROM tenants WHERE id = ?", (tenant_id,))
+            db.execute("DELETE FROM problems WHERE tenant_id = ?", (tenant_id,))
 
     # ---------------------------------------------------------------- members
 
@@ -232,6 +247,39 @@ class Store:
         with self._conn() as db:
             return [self._fix(r) for r in db.execute(
                 "SELECT * FROM fixes WHERE tenant_id = ? ORDER BY id DESC LIMIT ?", (tenant_id, limit))]
+
+    # ---------------------------------------------------------------- problems (server errors people can see)
+
+    def add_problem(self, area: str, code: str, detail: str | None = None, tenant_id: str | None = None) -> None:
+        with self._conn() as db:
+            db.execute("INSERT INTO problems (at, area, code, detail, tenant_id) VALUES (?, ?, ?, ?, ?)",
+                       (_iso(utcnow()), area, code, (detail or "")[:500], tenant_id))
+            db.execute("DELETE FROM problems WHERE id <= (SELECT MAX(id) FROM problems) - ?", (KEEP_PROBLEMS,))
+
+    def list_problems(self, limit: int = 20, tenant_id: str | None = None, server_only: bool = False) -> list[dict]:
+        with self._conn() as db:
+            if server_only:
+                rows = db.execute("SELECT * FROM problems WHERE tenant_id IS NULL ORDER BY id DESC LIMIT ?", (limit,))
+            elif tenant_id:
+                rows = db.execute("SELECT * FROM problems WHERE tenant_id = ? ORDER BY id DESC LIMIT ?",
+                                  (tenant_id, limit))
+            else:
+                rows = db.execute("SELECT * FROM problems ORDER BY id DESC LIMIT ?", (limit,))
+            return [dict(r) for r in rows]
+
+    # ---------------------------------------------------------------- Azure costs (cached)
+
+    def save_costs(self, tenant_id: str, data: dict) -> None:
+        with self._conn() as db:
+            db.execute("INSERT OR REPLACE INTO azure_costs (tenant_id, fetched_at, data) VALUES (?, ?, ?)",
+                       (tenant_id, _iso(utcnow()), json.dumps(data)))
+
+    def get_costs(self, tenant_id: str) -> dict | None:
+        with self._conn() as db:
+            row = db.execute("SELECT fetched_at, data FROM azure_costs WHERE tenant_id = ?", (tenant_id,)).fetchone()
+        if not row:
+            return None
+        return {"fetched_at": row["fetched_at"], **json.loads(row["data"])}
 
     def running_scan(self, tenant_id: str) -> dict | None:
         """The scan in progress, if any. Scans stuck for 30+ minutes (server restarted) are marked failed."""

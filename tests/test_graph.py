@@ -22,8 +22,11 @@ class FakeSession:
         self.responses = list(responses)
         self.requests = []
 
-    def get(self, url, params=None, headers=None, timeout=None):
+        self.bodies = []
+
+    def request(self, method, url, params=None, json=None, headers=None, timeout=None):
         self.requests.append((url, params, headers))
+        self.bodies.append((method, json))
         return self.responses.pop(0)
 
 
@@ -84,3 +87,15 @@ def test_usage_report_csv_is_parsed():
     rows = client.get_report_rows("/reports/getOffice365ActiveUserDetail(period='D180')")
     assert rows == [{"Report Refresh Date": "2026-11-04", "User Principal Name": "a@b.example",
                      "Exchange Last Activity Date": "2026-11-01"}]
+
+
+def test_post_and_patch_send_json_and_use_the_given_root():
+    session = FakeSession([FakeResponse(body={"properties": {"rows": []}}), FakeResponse(status=204, body={})])
+    client = GraphClient(lambda: "arm-token", root="https://management.azure.com")
+    client._session = lambda: session
+    client.post("/subscriptions/s1/providers/Microsoft.CostManagement/query", {"type": "ActualCost"},
+                {"api-version": "2023-03-01"})
+    client.patch("/policies/x", {"a": 1})
+    assert session.requests[0][0] == "https://management.azure.com/subscriptions/s1/providers/Microsoft.CostManagement/query"
+    assert session.requests[0][1] == {"api-version": "2023-03-01"}
+    assert session.bodies == [("POST", {"type": "ActualCost"}), ("PATCH", {"a": 1})]

@@ -28,6 +28,20 @@
     }
   });
 
+  // Azure spend chart: a small tooltip for each day (the table under the chart has the same numbers).
+  var tip = document.getElementById("chart-tip");
+  if (tip) {
+    document.addEventListener("mousemove", function (event) {
+      var hit = event.target.closest && event.target.closest(".cost-chart [data-tip]");
+      if (!hit) { tip.hidden = true; return; }
+      tip.textContent = hit.getAttribute("data-tip");
+      tip.hidden = false;
+      var x = Math.min(event.clientX + 12, window.innerWidth - tip.offsetWidth - 8);
+      tip.style.left = Math.max(8, x) + "px";
+      tip.style.top = (event.clientY - tip.offsetHeight - 10) + "px";
+    });
+  }
+
   // Reports print with every finding expanded, then go back to how they were.
   window.addEventListener("beforeprint", function () {
     document.querySelectorAll("details").forEach(function (d) {

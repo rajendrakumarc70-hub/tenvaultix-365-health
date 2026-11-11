@@ -29,6 +29,8 @@ tenant, a scan every week (or every day on higher plans).
 | Scoring | `app/scoring.py` | 0–100 score weighted by severity, grade A–F, score per area, money wasted, "what changed since last scan". |
 | License prices | `app/data/license_prices.yaml` | Microsoft list prices (after the July 2026 increase) used for the money-wasted estimate. Review when Microsoft changes prices. |
 | One-click fixes | `app/fixes.py`, `app/templates/fix.html` | Optional fixes for four safe settings (app approvals, app registration, guest invitations, "Anyone" links). Preview → the admin approves one delegated permission on Microsoft's screen → the app changes the setting with the admin's own rights, reads it back, records who/what/when and offers Undo. The admin's token is used once and not kept. History on the dashboard under "Changes made". |
+| Azure spend | `app/azure_costs.py`, `app/templates/azure.html` | This month's Azure costs from Azure Cost Management: spent so far, month-end estimate, a daily bar chart, top services and each subscription. Read-only: the customer gives the app the **Cost Management Reader** role (no extra Graph permission). Cached for an hour; Microsoft itself updates costs a few times a day. Rupees use Indian digit grouping. Sample at `/demo/azure`. |
+| Problems and health | `app/problems.py`, `/setup`, `/ops`, dashboard | Every failure (sign-in, connect, scan, fix, Azure read, crash) is recorded with its Microsoft code (AADSTS…) and a plain-English fix. `/setup` shows recent server-level problems (codes and advice only); each company's dashboard has a **Connection health** card (last scan, parts blocked by a missing permission, late scans, its own errors); `/ops` shows everything to the Tenvaultix team listed in `TVX_OPS_EMAILS` (signed in from `TVX_OPS_TENANT_ID`), with a one-button credential test. |
 | Office blueprint | `app/blueprint.py` + `app/templates/_blueprint.html` | The top of every report: the tenant drawn as an office floor plan an inspector has marked up. Front door = sign-in and MFA, master keys = admins, mailroom = email seals, file room = sharing, one desk per paid license, reception = guests, equipment room = devices. Numbered red marks link to the fix. Fonts are self-hosted under the SIL Open Font License (`app/static/fonts/`). |
 | Web app | `app/web.py`, `app/templates/` | Home page with pricing, free check, sample report, sign-in, connect flow, dashboard, report, team access, disconnect. |
 | Storage | `app/db.py` | SQLite: tenants, team members, scan findings. Disconnecting deletes everything for that tenant. |
@@ -138,6 +140,8 @@ Render runs the app straight from the `Dockerfile`, no other files needed:
 3. **Environment**: add `TVX_BASE_URL` = `https://tenvaultix-365-health-1.onrender.com` and `TVX_SESSION_SECRET` (tap **Generate**). Add the Microsoft
    values (`TVX_CLIENT_ID`, then `TVX_CLIENT_SECRET` or the certificate pair) once the app is registered
    ([guide](docs/AZURE_APP_REGISTRATION.md), step 6).
+   Optionally add `TVX_OPS_EMAILS` (your work email) and `TVX_OPS_TENANT_ID` (the Directory (tenant) ID
+   on the app registration's Overview page) to open the `/ops` error page.
 4. With **Auto-Deploy** on, every push to `main` redeploys.
 
 Free instances sleep after 15 minutes without visitors (the next visit takes about a minute) and their disk is
@@ -222,6 +226,10 @@ python -m app.cli set-plan <tenant-id> business
   protect it (Key Vault, rotation). Anyone holding it can read every connected tenant.
 - Only findings are stored (including names and emails of the accounts a finding is about); raw directory
   data is discarded after each scan.
+- Azure spend uses an app-only token for Azure Resource Manager and only works where the customer has assigned
+  the read-only **Cost Management Reader** role; it can't see or change resources.
+- Error records keep Microsoft's message for the team; public pages (`/setup`) show only codes and advice, and
+  never anything from a customer tenant. A crash shows a friendly page and never the stack trace.
 - Sessions are signed cookies (8 hours, `SameSite=Lax`, `Secure` on HTTPS). Every form has a CSRF token,
   responses carry a strict Content-Security-Policy, and the free domain check is rate-limited per IP.
 - Have the privacy page (`app/templates/privacy.html`) reviewed for DPDP (India), GDPR (UK/EU) and the

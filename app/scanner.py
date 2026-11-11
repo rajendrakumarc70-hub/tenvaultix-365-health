@@ -6,7 +6,9 @@ from datetime import datetime, timedelta
 from typing import Callable
 
 from . import blueprint
+from .problems import code_for, graph_code
 from .checks import run_checks
+from .collector import NO_PERMISSION
 from .config import PLANS
 from .db import Store, utcnow
 from .graph import AuthError, GraphError
@@ -32,6 +34,7 @@ def run_scan(store: Store, tenant_id: str, collect: CollectFn, scan_id: int | No
             "users": len(snapshot.get("users") or []),
             "domains": [d["name"] for d in snapshot["tenant"].get("domains", [])],
             "facts": blueprint.facts(snapshot),  # counts for the office drawing
+            "no_permission": sorted(s for s, why in snapshot.get("unavailable", {}).items() if why == NO_PERMISSION),
         }
         store.finish_scan(scan_id, results, summary, meta)
         if snapshot["tenant"].get("name"):
@@ -39,13 +42,16 @@ def run_scan(store: Store, tenant_id: str, collect: CollectFn, scan_id: int | No
         log.info("Scan %s for %s finished: score %s", scan_id, tenant_id, summary["score"])
     except AuthError as exc:
         log.warning("Scan %s for %s: token refused: %s", scan_id, tenant_id, exc)
+        store.add_problem("scan", code_for(str(exc), "graph-401"), str(exc), tenant_id)
         store.fail_scan(scan_id, "Microsoft refused access to your tenant. The app may have been removed, or the "
                                  "approval withdrawn. An admin can reconnect from the Connect page.")
     except GraphError as exc:
         log.warning("Scan %s for %s: Graph error: %s", scan_id, tenant_id, exc)
+        store.add_problem("scan", graph_code(exc.status), str(exc), tenant_id)
         store.fail_scan(scan_id, f"Microsoft Graph returned an error ({exc.status}). Please try again later.")
-    except Exception:
+    except Exception as exc:
         log.exception("Scan %s for %s crashed", scan_id, tenant_id)
+        store.add_problem("scan", "crash", f"{type(exc).__name__}: {str(exc)[:200]}", tenant_id)
         store.fail_scan(scan_id, "The scan hit an unexpected error. We've logged it; please try again later.")
     return scan_id
 

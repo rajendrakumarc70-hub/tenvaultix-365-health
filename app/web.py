@@ -15,12 +15,12 @@ from pathlib import Path
 from typing import Callable
 
 from fastapi import BackgroundTasks, FastAPI, Form, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import blueprint, demo, fixes
+from . import azure_costs, blueprint, demo, fixes, problems
 from .auth import LoginError, MicrosoftAuth, consent_error_message, is_consent_admin
 from .checks import results_for_domain, run_checks
 from .collector import collect
@@ -82,7 +82,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
                graph_factory: Callable[[str], GraphClient] | None = None, resolver: Resolver | None = None,
                auth: MicrosoftAuth | None = None, tenant_lookup=lookup_m365_tenant,
                sleep: Callable[[float], None] = time.sleep,
-               delegated_graph: Callable[[str], GraphClient] | None = None) -> FastAPI:
+               delegated_graph: Callable[[str], GraphClient] | None = None,
+               credential_check: Callable[[str], None] | None = None,
+               arm_factory: Callable[[str], GraphClient] | None = None) -> FastAPI:
     settings = settings or load_settings()
     store = store or Store(settings.database_path)
     resolver = resolver or SystemResolver()
@@ -94,6 +96,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         def delegated_graph(access_token: str) -> GraphClient:  # one-click fixes: the admin's own token
             return GraphClient(lambda: access_token, max_retries=1)
 
+    if arm_factory is None:
+        def arm_factory(tenant_id: str) -> GraphClient:  # Azure Resource Manager, for cost data
+            return GraphClient(app_token_provider(settings, tenant_id, azure_costs.ARM_SCOPE),
+                               root=azure_costs.ARM_ROOT, max_retries=1, timeout=20,
+                               sleep=lambda seconds: time.sleep(min(seconds, 5)))  # someone is waiting on the page
+    if credential_check is None:
+        def credential_check(tenant_id: str) -> None:  # raises if Microsoft won't issue the app a token
+            app_token_provider(settings, tenant_id)()
+
     def collect_tenant(tenant_id: str) -> dict:
         return collect(graph_factory(tenant_id), resolver, tenant_id)
 
@@ -104,8 +115,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
     templates = Jinja2Templates(directory=APP_DIR / "templates")
     templates.env.filters["date"] = _fmt_date
     templates.env.filters["money"] = lambda v: f"${v:,.0f}" if v else "$0"
+    templates.env.filters["cost"] = azure_costs.fmt_money
+    templates.env.filters["compact"] = azure_costs.compact
     templates.env.tests["onmicrosoft"] = lambda d: str(d).endswith(".onmicrosoft.com")
     domain_limiter = RateLimiter(20, 3600)
+    sign_in_problem_limiter = RateLimiter(20, 3600)  # the sign-in return address is public; don't let it flood the log
     app.state.store = store
 
     @app.middleware("http")
@@ -115,6 +129,20 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
             response.headers.setdefault(name, value)
         if request.url.path.startswith("/app"):
             response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.exception_handler(Exception)
+    async def crashed(request: Request, exc: Exception):
+        # Runs outside the session middleware, so the page is rendered without the signed-in user.
+        log.exception("Unhandled error on %s %s", request.method, request.url.path)
+        record("crash", "crash", f"{request.method} {request.url.path}: {type(exc).__name__}: {str(exc)[:200]}")
+        response = templates.TemplateResponse(request, "message.html", {
+            "settings": settings, "user": None, "csrf": "", "flash": [], "plans": PLANS, "year": utcnow().year,
+            "title": "Something went wrong on our side",
+            "body": "The app hit an unexpected error. It's been logged. Please try again in a minute.",
+            "actions": [("Back to home", "/")], "kind": "error"}, status_code=500)
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
         return response
 
     # ------------------------------------------------------------ helpers
@@ -132,6 +160,20 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
                 actions: list[tuple[str, str]] | None = None, kind: str = "info"):
         return render(request, "message.html", status_code=status_code, title=title, body=body,
                       actions=actions or [("Back to home", "/")], kind=kind)
+
+    def record(area: str, code: str, detail: str | None = None, tenant_id: str | None = None) -> None:
+        """Keep a problem for /setup, /ops and the company's dashboard. Never lets logging break a page."""
+        try:
+            store.add_problem(area, code, detail, tenant_id)
+        except Exception:
+            log.exception("Couldn't record problem %s", code)
+
+    def is_ops(user: dict | None) -> bool:
+        # Email alone isn't enough to trust (Microsoft advises against authorizing on it), so the person must also
+        # sign in from the Tenvaultix tenant.
+        return bool(user and settings.ops_emails and settings.ops_tenant_id
+                    and user["tid"].lower() == settings.ops_tenant_id
+                    and user["email"].lower() in settings.ops_emails)
 
     def flash(request: Request, text: str, kind: str = "info") -> None:
         request.session.setdefault("flash", []).append({"kind": kind, "text": text})
@@ -202,13 +244,21 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         return render(request, "report.html", **report_context(
             results, tenant_name=snap["tenant"]["name"], scanned_at=snap["collected_at"], meta=meta, is_demo=True))
 
+    @app.get("/demo/azure")
+    def demo_azure(request: Request):
+        costs = demo.azure_costs()
+        return render(request, "azure.html", costs=costs, chart=azure_costs.chart(costs["days"]),
+                      tenant_name="Acme Diagnostics (sample)", demo=True)
+
     @app.get("/privacy")
     def privacy(request: Request):
         return render(request, "privacy.html", permissions=GRAPH_PERMISSIONS)
 
     @app.get("/setup")
     def setup(request: Request):
-        return render(request, "setup.html", permissions=GRAPH_PERMISSIONS, fix_permissions=fixes.FIX_PERMISSIONS)
+        recent = problems.grouped(store.list_problems(limit=50, server_only=True))
+        return render(request, "setup.html", permissions=GRAPH_PERMISSIONS, fix_permissions=fixes.FIX_PERMISSIONS,
+                      recent_problems=recent[:6])
 
     @app.get("/healthz")
     def healthz():
@@ -231,15 +281,31 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         fix_flow = request.session.get("fix_flow")
         if fix_flow and params.get("state") and secrets.compare_digest(params["state"], fix_flow.get("state", "")):
             return finish_fix(request, params)
+        started_here = "auth_flow" in request.session  # only a sign-in we started is worth recording
+        client = request.client.host if request.client else "unknown"
         if "error" in params:
-            return message(request, "Sign-in didn't finish", params.get("error_description", params["error"])[:300],
-                           actions=[("Try again", "/login")], kind="error")
+            request.session.pop("auth_flow", None)
+            detail = params.get("error_description", params["error"])
+            code = problems.code_for(detail, problems.oauth_code(params["error"]))
+            if started_here and sign_in_problem_limiter.allow(client):
+                record("sign-in", code, detail)
+            return sign_in_failed(request, code, detail)
         try:
             user = auth.finish_login(request.session, params)
         except LoginError as exc:
-            return message(request, "Sign-in didn't finish", str(exc), actions=[("Try again", "/login")], kind="error")
+            code = problems.code_for(str(exc), "sign-in")
+            if started_here and sign_in_problem_limiter.allow(client):
+                record("sign-in", code, str(exc))
+            return sign_in_failed(request, code, str(exc))
         request.session["user"] = user
         return RedirectResponse(_safe_next(request.session.pop("next", None)), status_code=303)
+
+    def sign_in_failed(request: Request, code: str, detail: str):
+        known = code in problems.HINTS
+        hint = problems.hint(code)
+        body = f"{hint['title']}. {hint['advice']} (Microsoft code {code})" if known else detail[:300]
+        return message(request, "Sign-in didn't finish", body,
+                       actions=[("Try again", "/login"), ("Setup guide", "/setup")], kind="error")
 
     @app.get("/logout")
     def logout(request: Request):
@@ -276,6 +342,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
             return message(request, "That approval link has expired", "Please start the connection again.",
                            actions=[("Connect Microsoft 365", "/connect")], kind="error")
         if error:
+            record("connect", problems.code_for(error_description, error[:40]), error_description or error,
+                   user["tid"])
             return message(request, "Not connected", consent_error_message(error, error_description),
                            actions=[("Try again", "/connect"), ("Back to home", "/")], kind="error")
         if tenant.lower() != user["tid"].lower():
@@ -299,15 +367,18 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
             request.session.pop("pending_tenant", None)
             return RedirectResponse("/app", status_code=303)
         graph = graph_factory(tenant_id)
-        is_admin = None
+        is_admin, last_error = None, None
         for attempt in range(3):  # Microsoft can take a few seconds to apply a fresh approval
             try:
                 is_admin = is_consent_admin(graph, user["oid"])
                 break
             except (AuthError, GraphError) as exc:
                 log.info("Consent not active yet for %s (attempt %s): %s", tenant_id, attempt + 1, exc)
+                last_error = exc
                 sleep(3)
         if is_admin is None:
+            fallback = problems.graph_code(last_error.status) if isinstance(last_error, GraphError) else "graph-401"
+            record("connect", problems.code_for(str(last_error), fallback), str(last_error), tenant_id)
             return message(request, "Almost there",
                            "Microsoft is still applying your approval. This usually takes less than a minute.",
                            actions=[("Try again", "/connect/verify")])
@@ -340,11 +411,39 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         latest = store.latest_scan(tenant["id"])
         running = store.running_scan(tenant["id"])
         summary = summarize(latest["results"]) if latest else None
+        scans = store.list_scans(tenant["id"])
         return render(request, "dashboard.html", tenant=tenant, role=role, latest=latest, summary=summary,
-                      running=running, scans=store.list_scans(tenant["id"]), members=store.list_members(tenant["id"]),
+                      health=connection_health(tenant, latest, scans), costs=store.get_costs(tenant["id"]),
+                      running=running, scans=scans, members=store.list_members(tenant["id"]),
                       changes=store.list_fixes(tenant["id"]), fix_catalog=fixes.FIXES,
                       days_left=trial_days_left(tenant), scanning_allowed=can_scan(tenant),
                       plan_name=PLANS.get(tenant["plan"], (tenant["plan"],))[0])
+
+    def connection_health(tenant: dict, latest: dict | None, scans: list[dict]) -> dict:
+        """What's stopping this company's checks from working, in plain English, for the dashboard."""
+        last = next((s for s in scans if s["status"] != "running"), None)
+        blocked = (latest or {}).get("meta", {}).get("no_permission", []) if latest else []
+        interval = timedelta(days=PLANS.get(tenant["plan"], PLANS["trial"])[1])
+        late = bool(latest and can_scan(tenant)
+                    and utcnow() - datetime.fromisoformat(latest["started_at"]) > interval + timedelta(days=1))
+        recent = problems.grouped(store.list_problems(limit=30, tenant_id=tenant["id"]))[:5]
+        items = []
+        if last and last["status"] == "failed":
+            items.append(("bad", "The last scan failed", last["error"] or ""))
+        elif last:
+            items.append(("good", "Microsoft access is working", f"Last scan finished {_fmt_date(last['finished_at'])}."))
+        if blocked:
+            names = ", ".join(problems.SECTIONS.get(b, b) for b in blocked)
+            items.append(("warn", f"{len(blocked)} part{'s' if len(blocked) != 1 else ''} of your tenant couldn't be read",
+                          f"Missing permission for: {names}. An admin can approve the latest permissions."))
+        if late:
+            items.append(("warn", "Automatic scans are late",
+                          f"Your plan scans every {interval.days} day{'s' if interval.days != 1 else ''}, but the "
+                          f"last one was {_fmt_date(latest['started_at'])}. The server may have been asleep."))
+        worst = "bad" if any(i[0] == "bad" for i in items) else ("warn" if any(i[0] == "warn" for i in items)
+                                                                   else "good")
+        return {"items": items, "problems": recent, "worst": worst, "reapprove": bool(blocked) or (
+            last is not None and last["status"] == "failed")}
 
     @app.post("/app/scan")
     def start_scan(request: Request, background: BackgroundTasks, csrf: str = Form("")):
@@ -440,6 +539,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         try:
             grant = auth.finish_fix(request.session, params)
         except LoginError as exc:
+            user = request.session.get("user") or {}
+            record("fix", problems.code_for(str(exc), "fix-approval"), str(exc), user.get("tid"))
             return message(request, "Nothing was changed", str(exc), actions=back, kind="error")
         user, tenant = owner_context(request)
         fix = fixes.FIXES.get(pending.get("check_id", ""))
@@ -459,6 +560,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
                                   value=undo_of["before"] if undo_of else None)
         except GraphError as exc:
             log.warning("Fix %s for %s failed: %s", fix.check_id, tenant["id"], exc)
+            record("fix", problems.graph_code(exc.status), f"{fix.check_id}: {exc}", tenant["id"])
             store.add_fix(tenant["id"], fix.check_id, action, status="failed", by_email=user["email"],
                           error=f"{exc.status} {exc.code}", undo_of=undo_of["id"] if undo_of else None)
             text = (f"Your Microsoft account isn't allowed to make this change. It needs the {fix.roles} role."
@@ -522,5 +624,82 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
                        "your tenant: Microsoft Entra admin center > Entra ID > Enterprise apps > "
                        "Tenvaultix 365 Health Check > Properties > Delete.",
                        actions=[("Back to home", "/")], kind="good")
+
+    # ------------------------------------------------------------ Azure spend
+
+    def azure_view(tenant: dict, refresh: bool = False) -> dict:
+        """This month's Azure costs: from the cache if under an hour old, else fresh from Microsoft."""
+        cached = store.get_costs(tenant["id"])
+        if not refresh and azure_costs.is_fresh(cached):
+            return cached
+        try:
+            data = azure_costs.fetch(arm_factory(tenant["id"]))
+        except Exception as exc:  # a bad answer must not break the page
+            log.exception("Azure costs for %s crashed", tenant["id"])
+            data = {"state": "error", "error": "Reading Azure costs hit an unexpected error.",
+                    "code_text": f"{type(exc).__name__}: {str(exc)[:200]}"}
+        if data["state"] == "error":
+            record("azure", problems.code_for(data.get("code_text"), "azure-error"),
+                   data.get("code_text") or data.get("error"), tenant["id"])
+            if cached and cached.get("state") == "ok":  # keep showing the last good figures, marked as old
+                data = {**{k: v for k, v in cached.items() if k != "fetched_at"},
+                        "stale_error": data.get("error"), "good_at": cached.get("good_at") or cached["fetched_at"]}
+        store.save_costs(tenant["id"], data)
+        return store.get_costs(tenant["id"])
+
+    @app.get("/app/azure")
+    def azure(request: Request):
+        user, tenant, role = membership(request)
+        if not user:
+            return RedirectResponse("/login?next=/app/azure", status_code=303)
+        if not (tenant and role):
+            return RedirectResponse("/app", status_code=303)
+        costs = azure_view(tenant)
+        chart = azure_costs.chart(costs["days"]) if costs.get("state") == "ok" else None
+        return render(request, "azure.html", costs=costs, chart=chart, tenant_name=tenant["name"] or "Your company",
+                      role=role, demo=False)
+
+    @app.post("/app/azure/refresh")
+    def azure_refresh(request: Request, csrf: str = Form("")):
+        user, tenant, role = membership(request)
+        if not (tenant and role) or not csrf_ok(request, csrf):
+            return RedirectResponse("/app/azure", status_code=303)
+        cached = store.get_costs(tenant["id"])
+        if cached and utcnow() - datetime.fromisoformat(cached["fetched_at"]) < timedelta(minutes=5):
+            flash(request, "These figures were updated a moment ago. Azure itself updates costs every few hours.")
+        else:
+            azure_view(tenant, refresh=True)
+        return RedirectResponse("/app/azure", status_code=303)
+
+    # ------------------------------------------------------------ Tenvaultix team: problems across all companies
+
+    @app.get("/ops")
+    def ops(request: Request):
+        user = request.session.get("user")
+        if not user:
+            return RedirectResponse("/login?next=/ops", status_code=303)
+        if not is_ops(user):
+            return message(request, "Page not found", "This page doesn't exist.", status_code=404)
+        tenants = []
+        for t in store.list_tenants():
+            scans = store.list_scans(t["id"], limit=1)
+            tenants.append({**t, "last": scans[0] if scans else None,
+                            "problem_count": len(store.list_problems(limit=100, tenant_id=t["id"]))})
+        return render(request, "ops.html", recent=store.list_problems(limit=100), tenants=tenants,
+                      hint=problems.hint)
+
+    @app.post("/ops/test")
+    def ops_test(request: Request, csrf: str = Form("")):
+        user = request.session.get("user")
+        if not is_ops(user) or not csrf_ok(request, csrf):
+            return RedirectResponse("/ops", status_code=303)
+        try:
+            credential_check(user["tid"])
+            flash(request, "The app's Microsoft credential works: Microsoft issued a token for your tenant.", "good")
+        except Exception as exc:  # AuthError, or msal/network errors
+            code = problems.code_for(str(exc), "credential")
+            record("credential", code, str(exc))
+            flash(request, f"The credential test failed: {problems.hint(code)['title']} ({code}).", "warn")
+        return RedirectResponse("/ops", status_code=303)
 
     return app

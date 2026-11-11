@@ -22,7 +22,7 @@
         <p class="sub">Scanned {{ scanned_at|date }}{% if meta.users %} · {{ meta.users }} accounts{% endif %}{% if meta.domains %} · {{ meta.domains|reject('onmicrosoft')|list|join(', ') }}{% endif %}</p>
       </div>
       <div class="btn-row no-print">
-        {% if not demo %}<a class="btn btn-light btn-sm" href="/app">Dashboard</a>{% endif %}
+        {% if not demo %}<a class="btn btn-light btn-sm" href="/app">Dashboard</a>{% else %}<a class="btn btn-light btn-sm" href="/demo/azure">Sample Azure spend</a>{% endif %}
         <a class="btn btn-light btn-sm" href="#" data-print>Save as PDF</a>
       </div>
     </div>

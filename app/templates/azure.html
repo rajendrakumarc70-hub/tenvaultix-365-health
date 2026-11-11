@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Azure spend · {{ tenant_name }} · Tenvaultix{% endblock %}
+{% block head %}<meta name="robots" content="noindex">{% endblock %}
+{% block banner %}
+{% if demo %}
+<div class="demo-banner">
+  <div class="wrap">
+    <span><strong>Sample Azure spend.</strong> Acme Diagnostics is a made-up company. Connect your own to see your real costs.</span>
+    <a class="btn btn-primary btn-sm" href="/connect">Check my tenant, free</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block content %}
+{% set cur = costs.currency or '' %}
+<section class="page-head on-dark">
+  <div class="wrap">
+    <div class="head-row">
+      <div>
+        <span class="eyebrow">Azure spend{% if costs.month %} · {{ costs.month }}{% endif %}</span>
+        <h1>{{ tenant_name }}</h1>
+        <p class="sub">From Azure Cost Management{% if costs.fetched_at %} · checked {{ (costs.good_at or costs.fetched_at)|date }}{% endif %}{% if costs.last_day %} · costs up to {{ costs.last_day }}{% endif %}</p>
+      </div>
+      <div class="btn-row">
+        {% if not demo %}
+        <form method="post" action="/app/azure/refresh">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn btn-sky" type="submit">Refresh</button>
+        </form>
+        <a class="btn btn-light" href="/app">Dashboard</a>
+        {% else %}
+        <a class="btn btn-light" href="/demo">Sample report</a>
+        {% endif %}
+      </div>
+    </div>
+    {% if costs.state == 'ok' %}
+    <div class="kpis cost-kpis">
+      <div class="kpi"><b>{{ costs.total|cost(cur) }}</b><span>spent so far this month</span></div>
+      <div class="kpi"><b>{{ costs.projected|cost(cur) }}</b><span>{% if costs.projected is not none %}expected by month end, at this pace{% else %}month-end estimate after 3 days of data{% endif %}</span></div>
+      {% if costs.services %}<div class="kpi"><b>{{ costs.services[0].cost|cost(cur) }}</b><span>{{ costs.services[0].name }}, the biggest cost</span></div>{% endif %}
+      <div class="kpi"><b>{{ costs.subscriptions|selectattr('status', 'equalto', 'ok')|list|length }} of {{ costs.subscriptions|length }}</b><span>subscriptions we can read</span></div>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<div class="wrap">
+  {% if costs.stale_error %}
+  <div class="banner warn"><p><strong>Couldn't refresh just now:</strong> {{ costs.stale_error }} Showing the figures from {{ costs.good_at|date }}.</p></div>
+  {% endif %}
+
+  {% if costs.state == 'ok' %}
+  <section class="report-section">
+    <h2>Spend per day <span class="count">{{ cur }}, {{ costs.month }}</span></h2>
+    <div class="card">
+      <figure class="cost-chart">
+        <div class="chart-scroll">
+        <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="Azure spend per day in {{ costs.month }}: {{ costs.total|cost(cur) }} so far. The table below has every day.">
+          {% for t in chart.ticks %}
+          <line class="grid" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ t.y }}" y2="{{ t.y }}"/>
+          <text class="axis" x="{{ chart.left - 8 }}" y="{{ t.y + 4 }}" text-anchor="end">{{ t.value|compact(cur) }}</text>
+          {% endfor %}
+          {% for b in chart.bars %}{% set said = b.date ~ ' · ' ~ (b.cost|cost(cur) if b.cost else 'no costs yet') %}
+          <g class="day" data-tip="{{ said }}">
+            <title>{{ said }}</title>
+            <rect class="hit" x="{{ b.x - 1 }}" y="{{ chart.top }}" width="{{ b.w + 2 }}" height="{{ chart.base - chart.top }}"/>
+            {% if b.h > 0 %}{% set r = [4, b.w / 2, b.h]|min %}
+            <path class="bar" d="M{{ b.x }},{{ chart.base }} V{{ b.y + r }} q0,-{{ r }} {{ r }},-{{ r }} H{{ b.x + b.w - r }} q{{ r }},0 {{ r }},{{ r }} V{{ chart.base }} Z"/>
+            {% endif %}
+          </g>
+          {% if b.show_label %}<text class="axis" x="{{ b.x + b.w / 2 }}" y="{{ chart.base + 18 }}" text-anchor="middle">{{ b.label }}</text>{% endif %}
+          {% endfor %}
+          <line class="baseline" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ chart.base }}" y2="{{ chart.base }}"/>
+        </svg>
+        </div>
+        <figcaption class="small muted">Day of the month. Days with no bar have no costs yet: Azure usually adds a day's costs 8 to 72 hours later.</figcaption>
+      </figure>
+      <details class="section-gap">
+        <summary>Show every day as a table</summary>
+        <div class="table-wrap">
+          <table class="table num-table">
+            <thead><tr><th>Date</th><th>Spend</th></tr></thead>
+            <tbody>{% for d in costs.days if d.date <= (costs.last_day or '') %}<tr><td>{{ d.date }}</td><td>{{ d.cost|cost(cur) }}</td></tr>{% endfor %}</tbody>
+          </table>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <div class="two-col">
+    <section class="report-section">
+      <h2>Where the money goes</h2>
+      <div class="card">
+        <ul class="cost-list">
+          {% set top = costs.services[0].cost if costs.services else 0 %}
+          {% for s in costs.services %}
+          <li>
+            <div class="cost-row"><span>{{ s.name }}</span><b>{{ s.cost|cost(cur) }}</b></div>
+            <svg class="cost-bar" width="100%" height="8" aria-hidden="true"><rect class="track" width="100%" height="8" rx="4"/>{% if top %}<rect class="fill" width="{{ [s.cost / top * 100, 1]|max|round(1) }}%" height="8" rx="4"/>{% endif %}</svg>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </section>
+
+    <section class="report-section">
+      <h2>Subscriptions</h2>
+      <div class="card table-wrap">
+        <table class="table">
+          <thead><tr><th>Subscription</th><th>This month</th></tr></thead>
+          <tbody>
+          {% for s in costs.subscriptions %}
+            <tr>
+              <td>{{ s.name }}</td>
+              <td>{% if s.status == 'ok' %}{{ s.cost|cost(s.currency or cur) }}{% elif s.status == 'no_access' %}<span class="chip sev-medium">no access</span> <a href="#share">Share costs</a>{% else %}<span class="chip sev-high">error</span> <span class="small muted">{{ s.error }}</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% if costs.skipped %}<p class="small muted">{{ costs.skipped }} more subscriptions aren't shown. We read up to 25 at a time.</p>{% endif %}
+      </div>
+    </section>
+  </div>
+
+  {% if costs.other_currencies %}
+  <div class="banner"><p>Some subscriptions are billed in another currency and aren't included above:
+    {% for c, v in costs.other_currencies.items() %}{{ v|cost(c) }}{{ ', ' if not loop.last }}{% endfor %}.</p></div>
+  {% endif %}
+  <p class="note cost-note">These are Microsoft's figures for the month so far. Your invoice can differ a little: Microsoft finalises charges, credits and taxes when the billing period closes.</p>
+  {% elif costs.state == 'error' %}
+  <section class="report-section">
+    <div class="card">
+      <h3>We couldn't read Azure costs</h3>
+      <p>{{ costs.error }} Press Refresh to try again. If it keeps happening, the Connection health section on your dashboard shows the details.</p>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if costs.state == 'no_access' or (costs.state == 'ok' and costs.subscriptions|selectattr('status', 'equalto', 'no_access')|list) %}
+  <section class="report-section" id="share">
+    <h2>{% if costs.state == 'ok' %}Show costs for more subscriptions{% else %}Share your Azure costs with Tenvaultix{% endif %}</h2>
+    <div class="card fix-card">
+      {% if costs.state == 'no_access' %}<p>We can't see any Azure subscriptions yet. Either your company doesn't use Azure, or it hasn't given our app permission to read costs. Read-only access to costs takes about two minutes to set up:</p>{% endif %}
+      <ol class="fix-steps">
+        <li>Sign in to the <strong>Azure portal</strong> as an Owner or User Access Administrator of the subscription.</li>
+        <li>Open <strong>Subscriptions</strong> and pick the subscription. To cover every subscription at once, open <strong>Management groups</strong> and pick <strong>Tenant Root Group</strong> instead.</li>
+        <li>Choose <strong>Access control (IAM)</strong> &gt; <strong>Add</strong> &gt; <strong>Add role assignment</strong>.</li>
+        <li>Pick the role <strong>Cost Management Reader</strong> and press Next.</li>
+        <li>Choose <strong>Select members</strong>, search for <strong>Tenvaultix 365 Health Check</strong>, select it, then <strong>Review + assign</strong>.</li>
+        <li>Wait a few minutes (Microsoft can take up to an hour), then press Refresh on this page.</li>
+      </ol>
+      <p class="note">This role can only read costs and budgets. It can't see or change your servers, data or settings, and you can remove it at any time from the same page. If you buy Azure through a Microsoft partner (CSP), the partner has to allow customers to see costs first.</p>
+    </div>
+  </section>
+  {% endif %}
+</div>
+<div class="chart-tip" id="chart-tip" role="status" hidden></div>
+{% endblock %}

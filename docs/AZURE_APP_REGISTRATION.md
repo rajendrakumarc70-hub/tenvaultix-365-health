@@ -167,6 +167,26 @@ set in `wrangler.jsonc`, and a fresh deploy picks up new secrets.)
 | "Unverified" on the approval screen | Publisher verification not done yet | Step 5.7 |
 | Sign-in page says "isn't set up yet" | The app can't see the values from step 6 | Step 6, then check **/setup** |
 
+Tip: every one of these errors is also recorded. Open **/setup** on the site to see recent ones with the fix, or
+set `TVX_OPS_EMAILS` to your work email and `TVX_OPS_TENANT_ID` to the **Directory (tenant) ID**
+(on the app registration's Overview page), then open **/ops** for the full list and a **Test the app's Microsoft
+credential** button.
+
+## Optional: Azure spend
+
+Nothing to add in the app registration. Each customer who wants to see Azure costs gives the app read-only
+access to costs in **their** Azure:
+
+1. Azure portal → **Subscriptions** → pick one (or **Management groups → Tenant Root Group** for all of them).
+2. **Access control (IAM) → Add → Add role assignment**.
+3. Role **Cost Management Reader** → **Next** → **Select members** → search *Tenvaultix 365 Health Check* →
+   **Select** → **Review + assign**.
+4. Wait a few minutes (up to an hour), then open **Azure spend** on the dashboard and press **Refresh**.
+
+The page shows what Microsoft has: costs usually appear 8–24 hours after use (up to 72 hours on
+pay-as-you-go). Companies that buy Azure through a CSP partner see costs only if the partner allows it.
+Test it on your own tenant first: assign the role on one of your subscriptions, connect, and open Azure spend.
+
 ## Later: your own domain
 
 When the site moves to, for example, `https://health.yourcompany.com`:

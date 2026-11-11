@@ -20,11 +20,15 @@
   <p>We never read email content, files, chats or calendars, and scanning can't change anything in your tenant.</p>
   <p><strong>One-click fixes (optional).</strong> When an admin chooses a fix, Microsoft asks them to approve one permission for that change. We make only that change, with their own admin rights, record what changed, by whom and when, and don't keep their sign-in afterwards. Every fix can be undone.</p>
 
+  <p><strong>Azure spend (optional).</strong> If your company gives our app the <em>Cost Management Reader</em> role on its Azure subscriptions, we read this month's costs per day, service and subscription. That role can only read costs and budgets; it can't see or change your servers, data or settings. You can remove it at any time in the Azure portal (Access control).</p>
+
   <h2>What we store</h2>
   <ul>
     <li><strong>Your report findings:</strong> the result of each check, including the names and email addresses of accounts a finding is about (for example, "these 3 people have no MFA"). That's what makes the report useful.</li>
     <li><strong>Who can see the reports:</strong> the email addresses of the owner and the people they add.</li>
     <li><strong>Basic company details:</strong> your organization's name and Microsoft tenant ID.</li>
+    <li><strong>Azure cost totals</strong> (if shared): this month's totals per day, service and subscription name, refreshed at most once an hour.</li>
+    <li><strong>Error records:</strong> when something fails (a sign-in, a scan, an Azure read), the time, Microsoft's error code and message, so we can fix it. We keep the most recent 500 across all customers.</li>
   </ul>
   <p>We don't store raw copies of your directory, mailbox settings or logs. Each scan reads them, works out the findings and discards the rest.</p>
 

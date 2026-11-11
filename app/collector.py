@@ -29,6 +29,8 @@ NOT_MFA = {
 }
 MAX_DOMAINS = 5
 
+NO_PERMISSION = ("We don't have permission to read this. An admin can approve the latest permissions from "
+                 "the Connect page.")
 NEEDS_P1 = "Needs Microsoft Entra ID P1, which comes with Microsoft 365 Business Premium (or E3/E5)."
 NEEDS_INTUNE = "Needs Microsoft Intune, which comes with Microsoft 365 Business Premium (or E3/E5)."
 NO_SHAREPOINT = "Your plan doesn't include SharePoint Online."
@@ -51,8 +53,7 @@ def _reason(exc: Exception) -> str:
         if exc.needs_premium:
             return NEEDS_P1
         if exc.forbidden:
-            return ("We don't have permission to read this. An admin can approve the latest permissions from "
-                    "the Connect page.")
+            return NO_PERMISSION
         return f"Microsoft Graph returned an error: {exc.message[:160]}"
     if isinstance(exc, DnsError):
         return str(exc)

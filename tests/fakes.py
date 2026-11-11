@@ -203,6 +203,7 @@ class FakeAuth:
         self.user = user
         self.fix_requests: list[tuple[str, str]] = []
         self.fix_claims: dict | None = None  # override the tid/oid Microsoft "returns" for a fix
+        self.login_error: str | None = None  # make the next sign-ins fail with this Microsoft message
 
     def start_fix(self, session: dict, scope: str, login_hint: str) -> str:
         session["fix_flow"] = {"state": "fixstate"}
@@ -220,6 +221,9 @@ class FakeAuth:
 
     def finish_login(self, session: dict, params: dict) -> dict:
         session.pop("auth_flow", None)
+        if self.login_error:
+            from app.auth import LoginError
+            raise LoginError(self.login_error)
         return dict(self.user)
 
     def admin_consent_url(self, tenant_id: str, state: str) -> str:

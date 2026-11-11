@@ -151,3 +151,42 @@ def snapshot(now: datetime | None = None) -> dict:
         "secure_score": {"current": 38.5, "max": 92.0},
         "dns": [check_domain(d, resolver, tenant_lookup=lambda _: DEMO_TENANT_ID) for d in (DOMAIN, ALIAS_DOMAIN)],
     }
+
+
+# ---------------------------------------------------------------- Azure spend sample (Indian rupees)
+
+AZURE_SERVICES = [  # name, typical cost per day in INR, weekend factor
+    ("Virtual Machines", 920, 0.8), ("Azure SQL Database", 360, 0.55), ("Azure App Service", 240, 1.0),
+    ("Storage", 215, 1.0), ("Azure Backup", 160, 1.0), ("Microsoft Defender for Cloud", 118, 1.0),
+    ("Bandwidth", 62, 0.6), ("Azure Monitor", 44, 0.9), ("Virtual Network", 31, 1.0), ("Azure DNS", 3.2, 1.0),
+    ("Key Vault", 1.8, 0.7),
+]
+
+
+def azure_costs(today=None) -> dict:
+    """A month of made-up Azure spend, shaped like azure_costs.fetch() returns, with data up to two days ago."""
+    from . import azure_costs as costs
+
+    today = today or datetime.now(timezone.utc).date()
+    rows = []
+    last = max(1, today.day - 2)  # Azure adds costs a day or two late
+    for day in range(1, last + 1):
+        when = today.replace(day=day)
+        weekend = when.weekday() >= 5
+        for i, (name, per_day, weekend_factor) in enumerate(AZURE_SERVICES):
+            wobble = 1 + (((day * 7 + i * 13) % 11) - 5) / 50  # +-10%, the same every time
+            cost = per_day * wobble * (weekend_factor if weekend else 1)
+            if name == "Virtual Machines" and day == 6:
+                cost += 2400  # someone left a large test VM running for a day
+            rows.append({"date": when.isoformat(), "service": name, "cost": round(cost, 2), "currency": "INR"})
+    prod = sum(r["cost"] for r in rows if r["service"] not in ("Azure App Service", "Key Vault"))
+    subs = [
+        {"id": "demo-prod", "name": "Acme Production", "status": "ok", "cost": prod, "currency": "INR"},
+        {"id": "demo-dev", "name": "Acme Dev/Test", "status": "ok",
+         "cost": sum(r["cost"] for r in rows) - prod, "currency": "INR"},
+        {"id": "demo-fin", "name": "Finance sandbox", "status": "no_access", "cost": 0.0, "currency": "",
+         "error": "403 AuthorizationFailed"},
+    ]
+    data = costs.summarise(rows, subs, today)
+    data["fetched_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return data
