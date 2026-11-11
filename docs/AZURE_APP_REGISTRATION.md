@@ -5,7 +5,7 @@ company's Microsoft 365), not in a customer's. It takes about 20 minutes.
 
 **You need:** a work account in the Tenvaultix tenant with at least the **Application Developer** role (a Global
 Administrator also works), and the site address. For the dev site that's
-`https://tenvaultix-365-health.onrender.com`. Later you'll add your own domain the same
+`https://tenvaultix-365-health-1.onrender.com`. Later you'll add your own domain the same
 way.
 
 ---
@@ -20,7 +20,7 @@ way.
    organizational directory (Any Microsoft Entra ID tenant - Multitenant)"*. Don't choose the option that also
    includes personal Microsoft accounts.
 6. **Redirect URI:** platform **Web**, address:
-   `https://tenvaultix-365-health.onrender.com/auth/callback`
+   `https://tenvaultix-365-health-1.onrender.com/auth/callback`
 7. Select **Register**.
 8. On the **Overview** page, copy the **Application (client) ID**. You need it in step 6.
 
@@ -28,7 +28,7 @@ way.
 
 1. In the app, open **Authentication** (on some screens **Authentication → Redirect URI configuration**).
 2. Under **Web → Redirect URIs**, select **Add URI** and enter:
-   `https://tenvaultix-365-health.onrender.com/connect/callback`
+   `https://tenvaultix-365-health-1.onrender.com/connect/callback`
 3. Leave **Access tokens** and **ID tokens** (implicit grant) **unticked**. The app doesn't use them.
 4. Select **Save**.
 
@@ -125,7 +125,7 @@ Settings → Variables and Secrets**, type **Secret**.)
 | `TVX_CERT_THUMBPRINT` | Certificate thumbprint from step 4B (certificate only) |
 | `TVX_CERT_PRIVATE_KEY` | Entire contents of `health-check.key`, including the BEGIN/END lines (certificate only) |
 | `TVX_SESSION_SECRET` | A long random string. On Render, tap **Generate** |
-| `TVX_BASE_URL` | `https://tenvaultix-365-health.onrender.com` (no slash at the end) |
+| `TVX_BASE_URL` | `https://tenvaultix-365-health-1.onrender.com` (no slash at the end) |
 
 Saving environment variables on Render restarts the app with the new values. (On Cloudflare, `TVX_BASE_URL` is
 set in `wrangler.jsonc`, and a fresh deploy picks up new secrets.)
