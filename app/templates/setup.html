@@ -42,6 +42,12 @@
       <tbody>{% for name, why in permissions %}<tr><td class="perm-name">{{ name }}</td><td>{{ why }}</td></tr>{% endfor %}</tbody>
     </table>
   </div>
+  <p>Optional, for one-click fixes: also add these <strong>delegated</strong> permissions. Don't grant admin consent for them; an admin approves each one only when they use a fix.</p>
+  <div class="card table-wrap">
+    <table class="table">
+      <tbody>{% for name in fix_permissions %}<tr><td class="perm-name">{{ name }}</td><td>Delegated. Used only while an admin applies or undoes a one-click fix.</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
   <ol start="6">
     <li>Under Branding &amp; properties, set the publisher domain, then complete <strong>publisher verification</strong> with your Microsoft partner account, so customers see a verified badge instead of "unverified".</li>
   </ol>

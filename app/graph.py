@@ -121,6 +121,15 @@ class GraphClient:
     def get_all(self, path: str, params: dict | None = None, limit: int | None = None) -> list[dict]:
         return list(self.iter_all(path, params, limit))
 
+    def patch(self, path: str, body: dict) -> None:
+        """Change a setting. Only used by one-click fixes, with a delegated token the admin just approved."""
+        url = path if path.startswith("https://") else GRAPH_ROOT + path
+        resp = self._session().patch(
+            url, json=body, timeout=self._timeout,
+            headers={"Authorization": f"Bearer {self._token()}", "Accept": "application/json"})
+        if resp.status_code >= 400:
+            raise _error_from(resp)
+
     def get_report_rows(self, path: str) -> list[dict]:
         """Usage reports answer with a redirect to a CSV file. requests follows it and drops our
         Authorization header on the way (the download link is pre-authenticated)."""

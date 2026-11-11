@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import blueprint, demo
+from . import blueprint, demo, fixes
 from .auth import LoginError, MicrosoftAuth, consent_error_message, is_consent_admin
 from .checks import results_for_domain, run_checks
 from .collector import collect
@@ -81,7 +81,8 @@ def _safe_next(value: str | None) -> str:
 def create_app(settings: Settings | None = None, store: Store | None = None,
                graph_factory: Callable[[str], GraphClient] | None = None, resolver: Resolver | None = None,
                auth: MicrosoftAuth | None = None, tenant_lookup=lookup_m365_tenant,
-               sleep: Callable[[float], None] = time.sleep) -> FastAPI:
+               sleep: Callable[[float], None] = time.sleep,
+               delegated_graph: Callable[[str], GraphClient] | None = None) -> FastAPI:
     settings = settings or load_settings()
     store = store or Store(settings.database_path)
     resolver = resolver or SystemResolver()
@@ -89,6 +90,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
     if graph_factory is None:
         def graph_factory(tenant_id: str) -> GraphClient:
             return GraphClient(app_token_provider(settings, tenant_id))
+    if delegated_graph is None:
+        def delegated_graph(access_token: str) -> GraphClient:  # one-click fixes: the admin's own token
+            return GraphClient(lambda: access_token, max_retries=1)
 
     def collect_tenant(tenant_id: str) -> dict:
         return collect(graph_factory(tenant_id), resolver, tenant_id)
@@ -204,7 +208,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
 
     @app.get("/setup")
     def setup(request: Request):
-        return render(request, "setup.html", permissions=GRAPH_PERMISSIONS)
+        return render(request, "setup.html", permissions=GRAPH_PERMISSIONS, fix_permissions=fixes.FIX_PERMISSIONS)
 
     @app.get("/healthz")
     def healthz():
@@ -224,6 +228,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
     @app.get("/auth/callback")
     def auth_callback(request: Request):
         params = dict(request.query_params)
+        fix_flow = request.session.get("fix_flow")
+        if fix_flow and params.get("state") and secrets.compare_digest(params["state"], fix_flow.get("state", "")):
+            return finish_fix(request, params)
         if "error" in params:
             return message(request, "Sign-in didn't finish", params.get("error_description", params["error"])[:300],
                            actions=[("Try again", "/login")], kind="error")
@@ -335,6 +342,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         summary = summarize(latest["results"]) if latest else None
         return render(request, "dashboard.html", tenant=tenant, role=role, latest=latest, summary=summary,
                       running=running, scans=store.list_scans(tenant["id"]), members=store.list_members(tenant["id"]),
+                      changes=store.list_fixes(tenant["id"]), fix_catalog=fixes.FIXES,
                       days_left=trial_days_left(tenant), scanning_allowed=can_scan(tenant),
                       plan_name=PLANS.get(tenant["plan"], (tenant["plan"],))[0])
 
@@ -373,9 +381,109 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
             return message(request, "Report not found", "This report doesn't exist or isn't yours to see.",
                            status_code=404, actions=[("Go to dashboard", "/app")])
         previous = store.previous_scan(tenant["id"], scan_id)
-        return render(request, "report.html", **report_context(
+        return render(request, "report.html", fixable=list(fixes.FIXES) if role == "owner" else [], **report_context(
             scan["results"], tenant_name=tenant["name"] or "Your company", scanned_at=scan["started_at"],
             meta=scan["meta"], previous=previous["results"] if previous else None, scan=scan))
+
+    # ------------------------------------------------------------ one-click fixes
+
+    def owner_context(request: Request):
+        """(user, tenant) when the signed-in person owns the connected company, else (user, None)."""
+        user, tenant, role = membership(request)
+        return (user, tenant) if role == "owner" else (user, None)
+
+    @app.get("/app/fix/{check_id}")
+    def fix_preview(request: Request, check_id: str):
+        user, tenant = owner_context(request)
+        if not user:
+            return RedirectResponse(f"/login?next=/app/fix/{check_id}", status_code=303)
+        fix = fixes.FIXES.get(check_id)
+        if not fix:
+            return message(request, "No one-click fix for this", "Follow the step-by-step guide in the report instead.",
+                           status_code=404, actions=[("Go to dashboard", "/app")])
+        if not tenant:
+            return message(request, "Only the owner can make changes",
+                           "One-click fixes are available to the person who connected your company.",
+                           status_code=403, actions=[("Go to dashboard", "/app")])
+        latest = store.latest_scan(tenant["id"])
+        result = next((r for r in (latest or {}).get("results", []) if r["id"] == check_id), None)
+        return render(request, "fix.html", fix=fix, result=result, latest=latest)
+
+    @app.post("/app/fix/{check_id}")
+    def fix_start(request: Request, check_id: str, csrf: str = Form("")):
+        user, tenant = owner_context(request)
+        fix = fixes.FIXES.get(check_id)
+        if not (fix and tenant and csrf_ok(request, csrf)):
+            return RedirectResponse("/app", status_code=303)
+        request.session["fix_pending"] = {"check_id": check_id}
+        return RedirectResponse(auth.start_fix(request.session, fix.scope, user["email"]), status_code=303)
+
+    @app.post("/app/fixes/{fix_id}/undo")
+    def fix_undo(request: Request, fix_id: int, csrf: str = Form("")):
+        user, tenant = owner_context(request)
+        record = store.get_fix(fix_id)
+        if not (tenant and record and record["tenant_id"] == tenant["id"] and csrf_ok(request, csrf)
+                and record["action"] == "apply" and record["status"] != "failed" and not record["undone_by"]):
+            return RedirectResponse("/app", status_code=303)
+        fix = fixes.FIXES[record["check_id"]]
+        request.session["fix_pending"] = {"check_id": fix.check_id, "undo_of": fix_id}
+        return RedirectResponse(auth.start_fix(request.session, fix.scope, user["email"]), status_code=303)
+
+    def finish_fix(request: Request, params: dict):
+        pending = request.session.pop("fix_pending", None) or {}
+        back = [("Back to dashboard", "/app")]
+        if "error" in params:
+            request.session.pop("fix_flow", None)
+            return message(request, "Nothing was changed",
+                           "The approval on Microsoft's page wasn't completed, so we didn't change anything.",
+                           actions=back)
+        try:
+            grant = auth.finish_fix(request.session, params)
+        except LoginError as exc:
+            return message(request, "Nothing was changed", str(exc), actions=back, kind="error")
+        user, tenant = owner_context(request)
+        fix = fixes.FIXES.get(pending.get("check_id", ""))
+        if not (fix and tenant):
+            return message(request, "Nothing was changed", "This change isn't available to your account.",
+                           actions=back, kind="error")
+        if grant["tid"] != tenant["id"] or grant["oid"] != user["oid"]:
+            return message(request, "Nothing was changed",
+                           "Microsoft approved the change with a different account or company. Approve it with the "
+                           "same account you're signed in with.", actions=back, kind="error")
+        undo_of = store.get_fix(pending["undo_of"]) if pending.get("undo_of") else None
+        if undo_of and (undo_of["tenant_id"] != tenant["id"] or undo_of["undone_by"]):
+            return message(request, "Nothing was changed", "That change has already been undone.", actions=back)
+        action = "undo" if undo_of else "apply"
+        try:
+            outcome = fixes.apply(fix, delegated_graph(grant["access_token"]),
+                                  value=undo_of["before"] if undo_of else None)
+        except GraphError as exc:
+            log.warning("Fix %s for %s failed: %s", fix.check_id, tenant["id"], exc)
+            store.add_fix(tenant["id"], fix.check_id, action, status="failed", by_email=user["email"],
+                          error=f"{exc.status} {exc.code}", undo_of=undo_of["id"] if undo_of else None)
+            text = (f"Your Microsoft account isn't allowed to make this change. It needs the {fix.roles} role."
+                    if exc.forbidden else f"Microsoft returned an error ({exc.status}). Please try again later.")
+            return message(request, "Nothing was changed", text, actions=back, kind="error")
+        fix_id = store.add_fix(tenant["id"], fix.check_id, action, before=outcome["before"], after=outcome["after"],
+                               status="done" if outcome["verified"] else "unverified", by_email=user["email"],
+                               undo_of=undo_of["id"] if undo_of else None)
+        log.info("Fix %s %s for %s by %s", fix.check_id, action, tenant["id"], user["email"])
+        return RedirectResponse(f"/app/fixes/{fix_id}", status_code=303)
+
+    @app.get("/app/fixes/{fix_id}")
+    def fix_result(request: Request, fix_id: int):
+        user, tenant, role = membership(request)
+        if not user:
+            return RedirectResponse(f"/login?next=/app/fixes/{fix_id}", status_code=303)
+        record = store.get_fix(fix_id)
+        if not (tenant and role and record and record["tenant_id"] == tenant["id"]):
+            return message(request, "Change not found", "This change doesn't exist or isn't yours to see.",
+                           status_code=404, actions=[("Go to dashboard", "/app")])
+        fix = fixes.FIXES[record["check_id"]]
+        can_undo = (role == "owner" and record["action"] == "apply" and record["status"] != "failed"
+                    and not record["undone_by"])
+        return render(request, "fix_result.html", fix=fix, record=record, can_undo=can_undo,
+                      before_text=fix.describe(record["before"]), after_text=fix.describe(record["after"]))
 
     @app.post("/app/team")
     def add_member(request: Request, csrf: str = Form(""), email: str = Form("")):

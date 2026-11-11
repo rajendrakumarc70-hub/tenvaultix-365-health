@@ -460,6 +460,14 @@ input:focus-visible, .btn:focus-visible, summary:focus-visible, a:focus-visible 
   .bp-notes ol { columns: 1; }
 }
 
+/* ---------- one-click fixes */
+.fix-card { display: grid; gap: 18px; }
+.fix-card h3 { margin-bottom: 4px; }
+.fix-card p { margin: 0; color: var(--ink-2); }
+.fix-steps { margin: 0; padding-left: 20px; color: var(--ink-2); }
+.fix-steps li + li { margin-top: 6px; }
+.fix-card .table th { width: 110px; }
+
 /* ---------- responsive */
 @media (max-width: 960px) {
   .hero .wrap { grid-template-columns: 1fr; }

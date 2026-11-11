@@ -8,7 +8,7 @@ from app.dnscheck import StaticResolver
 from app.graph import AuthError
 from app.web import create_app
 
-from .fakes import TENANT, FakeAuth, FakeGraph, make_settings, tenant_resolver, tenant_routes
+from .fakes import TENANT, FakeAuth, FakeGraph, FakeWriter, make_settings, tenant_resolver, tenant_routes
 
 ADMIN = {"oid": "u1", "tid": TENANT, "email": "ada@contoso.example", "name": "Ada Admin"}
 STAFF = {"oid": "u2", "tid": TENANT, "email": "bob@contoso.example", "name": "Bob Staff"}
@@ -22,10 +22,16 @@ class World:
         self.store = Store(tmp_path / "test.db")
         self.routes = graph_routes or tenant_routes(premium=True)
         self.auth = FakeAuth(ADMIN)
+        self.writer = FakeWriter()
+        self.tokens: list[str] = []
         settings = make_settings() if configured else make_settings(client_id="")
         self.app = create_app(settings=settings, store=self.store, graph_factory=lambda tid: FakeGraph(self.routes),
                               resolver=tenant_resolver(), auth=self.auth, tenant_lookup=lambda d: None,
-                              sleep=lambda s: None)
+                              sleep=lambda s: None, delegated_graph=self._writer)
+
+    def _writer(self, token: str) -> FakeWriter:
+        self.tokens.append(token)
+        return self.writer
 
     def client(self, user=None) -> TestClient:
         client = TestClient(self.app)

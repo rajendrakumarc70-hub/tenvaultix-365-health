@@ -28,6 +28,7 @@ tenant, a scan every week (or every day on higher plans).
 | Check library | `app/checks/catalog.yaml` + `app/checks/rules.py` | 20 checks. Wording, severity and fix steps live in YAML; the pass/warn/fail logic lives in Python under the same id. |
 | Scoring | `app/scoring.py` | 0–100 score weighted by severity, grade A–F, score per area, money wasted, "what changed since last scan". |
 | License prices | `app/data/license_prices.yaml` | Microsoft list prices (after the July 2026 increase) used for the money-wasted estimate. Review when Microsoft changes prices. |
+| One-click fixes | `app/fixes.py`, `app/templates/fix.html` | Optional fixes for four safe settings (app approvals, app registration, guest invitations, "Anyone" links). Preview → the admin approves one delegated permission on Microsoft's screen → the app changes the setting with the admin's own rights, reads it back, records who/what/when and offers Undo. The admin's token is used once and not kept. History on the dashboard under "Changes made". |
 | Office blueprint | `app/blueprint.py` + `app/templates/_blueprint.html` | The top of every report: the tenant drawn as an office floor plan an inspector has marked up. Front door = sign-in and MFA, master keys = admins, mailroom = email seals, file room = sharing, one desk per paid license, reception = guests, equipment room = devices. Numbered red marks link to the fix. Fonts are self-hosted under the SIL Open Font License (`app/static/fonts/`). |
 | Web app | `app/web.py`, `app/templates/` | Home page with pricing, free check, sample report, sign-in, connect flow, dashboard, report, team access, disconnect. |
 | Storage | `app/db.py` | SQLite: tenants, team members, scan findings. Disconnecting deletes everything for that tenant. |
@@ -213,7 +214,10 @@ python -m app.cli set-plan <tenant-id> business
 
 ## Security notes
 
-- Read-only Graph permissions; the app can't change anything in a customer tenant.
+- Scanning uses read-only Graph application permissions and can't change anything in a customer tenant.
+- One-click fixes are separate and optional: delegated permissions an admin approves when they use a fix, used
+  for that one change with the admin's own rights, from a throwaway token cache. Every change is recorded and can
+  be undone. Fixes that could lock people out (MFA policies, removing admins) are deliberately not offered.
 - No customer passwords are ever seen. Our own credential is a certificate or secret in our tenant, so
   protect it (Key Vault, rotation). Anyone holding it can read every connected tenant.
 - Only findings are stored (including names and emails of the accounts a finding is about); raw directory

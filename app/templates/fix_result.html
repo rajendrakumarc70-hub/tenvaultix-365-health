@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ fix.title }} · Tenvaultix{% endblock %}
+{% block head %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+{% set undone = record.action == 'undo' %}
+<section class="page-head on-dark">
+  <div class="wrap narrow">
+    <span class="eyebrow">{{ 'Undo' if undone else 'One-click fix' }} · {{ fix.check_id }}</span>
+    <h1>{% if record.status == 'unverified' %}Change sent: {{ fix.title }}{% elif undone %}Changed back: {{ fix.title }}{% else %}Done: {{ fix.title }}{% endif %}</h1>
+    <p class="sub">By {{ record.by_email }} · {{ record.at|date }}</p>
+  </div>
+</section>
+<div class="wrap narrow">
+  {% if record.status == 'unverified' %}
+  <div class="banner warn"><p>Microsoft accepted the change but still shows the old setting. This can take a few minutes. Run a new scan later to confirm.</p></div>
+  {% elif record.undone_by %}
+  <div class="banner"><p>This change was later undone. <a href="/app/fixes/{{ record.undone_by }}">See the undo</a>.</p></div>
+  {% endif %}
+  <section class="report-section">
+    <div class="card fix-card">
+      <div class="table-wrap">
+        <table class="table">
+          <tbody>
+            <tr><th scope="row">Before</th><td>{{ before_text }}</td></tr>
+            <tr><th scope="row">Now</th><td>{{ after_text }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      {% if not undone %}<p class="note">{{ fix.notice }}</p>{% endif %}
+      <div class="btn-row">
+        {% if can_undo %}
+        <form method="post" action="/app/fixes/{{ record.id }}/undo">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn btn-ghost" type="submit">Undo this change</button>
+        </form>
+        {% endif %}
+        <form method="post" action="/app/scan">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn btn-primary" type="submit">Run a new scan</button>
+        </form>
+        <a class="btn btn-ghost" href="/app#changes">Back to dashboard</a>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

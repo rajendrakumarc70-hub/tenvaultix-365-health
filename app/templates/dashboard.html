@@ -100,6 +100,28 @@
     </div>
   </section>
 
+  {% if changes %}
+  <section class="report-section" id="changes">
+    <h2>Changes made <span class="count">one-click fixes, newest first</span></h2>
+    <div class="card table-wrap">
+      <table class="table">
+        <thead><tr><th>When</th><th>Change</th><th>By</th><th>Result</th><th></th></tr></thead>
+        <tbody>
+        {% for c in changes %}
+          <tr>
+            <td>{{ c.at|date }}</td>
+            <td>{{ 'Undo: ' if c.action == 'undo' }}{{ fix_catalog[c.check_id].title if c.check_id in fix_catalog else c.check_id }}</td>
+            <td>{{ c.by_email }}</td>
+            <td><span class="status-dot {{ 'done' if c.status == 'done' else ('failed' if c.status == 'failed' else 'running') }}"></span>{{ {'done': 'Done', 'unverified': 'Waiting for Microsoft', 'failed': 'Not changed'}[c.status] }}{% if c.undone_by %} · undone{% endif %}</td>
+            <td>{% if c.status != 'failed' %}<a href="/app/fixes/{{ c.id }}">View</a>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
   <section class="report-section" id="team">
     <h2>Team access <span class="count">people who can see these reports after signing in with Microsoft</span></h2>
     <div class="card">

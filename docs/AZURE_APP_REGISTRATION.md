@@ -65,6 +65,24 @@ The address must match exactly: `https`, no trailing slash. A mismatch gives err
    company from the app's Connect page. If you want to scan the Tenvaultix tenant itself, simply connect it
    through the app like a customer would.
 
+### Optional: permissions for one-click fixes
+
+One-click fixes let a customer's admin make a few safe changes from the report (stop staff approving outside
+apps, only admins register apps, stop guests inviting guests, turn off "Anyone" links). They use **delegated**
+permissions: the admin approves one permission on Microsoft's screen when they press **Fix it for me**, and the
+change is made with their own admin rights. The app doesn't keep their sign-in afterwards.
+
+1. **Add a permission → Microsoft Graph → Delegated permissions**, and tick:
+
+   | Permission | Used by |
+   |---|---|
+   | `Policy.ReadWrite.Authorization` | App approvals, app registration, guest invitations |
+   | `SharePointTenantSettings.ReadWrite.All` | Turning off "Anyone" links |
+
+2. **Don't** grant admin consent for these. Each admin approves them only when they use a fix.
+
+No extra redirect address is needed: fixes come back to `/auth/callback`.
+
 ## Step 4: Create the app's credential
 
 The app proves who it is to Microsoft with either a **client secret** (quick, fine for testing) or a

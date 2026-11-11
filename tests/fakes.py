@@ -160,11 +160,59 @@ def make_settings(**overrides) -> Settings:
     return Settings(**values)
 
 
+LEGACY_CONSENT = "ManagePermissionGrantsForSelf.microsoft-user-default-legacy"
+TEAMS_RSC = "ManagePermissionGrantsForOwnedResource.microsoft-dynamically-managed-permissions-for-team"
+
+
+def _merge(target: dict, patch: dict) -> None:
+    for key, value in patch.items():
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            _merge(target[key], value)
+        else:
+            target[key] = copy.deepcopy(value)
+
+
+class FakeWriter:
+    """Stands in for the admin's delegated Graph client during a one-click fix: settings by path, PATCHes merged in."""
+
+    def __init__(self, settings: dict | None = None, fail: Exception | None = None):
+        self.settings = copy.deepcopy(settings or {
+            "/policies/authorizationPolicy": {
+                "allowInvitesFrom": "everyone",
+                "defaultUserRolePermissions": {"allowedToCreateApps": True,
+                                               "permissionGrantPoliciesAssigned": [LEGACY_CONSENT, TEAMS_RSC]}},
+            "/admin/sharepoint/settings": {"sharingCapability": "externalUserAndGuestSharing"},
+        })
+        self.fail = fail
+        self.patches: list[tuple[str, dict]] = []
+
+    def get(self, path, params=None):
+        return copy.deepcopy(self.settings[path])
+
+    def patch(self, path, body):
+        if self.fail:
+            raise self.fail
+        self.patches.append((path, copy.deepcopy(body)))
+        _merge(self.settings[path], body)
+
+
 class FakeAuth:
     """Stands in for Microsoft sign-in: /login redirects straight back, signed in as `user`."""
 
     def __init__(self, user: dict):
         self.user = user
+        self.fix_requests: list[tuple[str, str]] = []
+        self.fix_claims: dict | None = None  # override the tid/oid Microsoft "returns" for a fix
+
+    def start_fix(self, session: dict, scope: str, login_hint: str) -> str:
+        session["fix_flow"] = {"state": "fixstate"}
+        self.fix_requests.append((scope, login_hint))
+        return "/auth/callback?code=fix&state=fixstate"
+
+    def finish_fix(self, session: dict, params: dict) -> dict:
+        session.pop("fix_flow", None)
+        claims = self.fix_claims or {"tid": self.user["tid"], "oid": self.user["oid"]}
+        return {"access_token": "delegated-token", **claims}
 
     def start_login(self, session: dict) -> str:
         session["auth_flow"] = {"state": "s"}

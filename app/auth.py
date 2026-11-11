@@ -64,6 +64,36 @@ class MicrosoftAuth:
             raise LoginError("Microsoft didn't return the account details we need.")
         return {"oid": claims["oid"], "tid": claims["tid"], "email": email, "name": claims.get("name") or email}
 
+    # ---- one-click fixes: the admin approves one delegated permission just before the change
+
+    def _fix_app(self) -> msal.ConfidentialClientApplication:
+        """A new client with an empty token cache each time, so the admin's token isn't kept after the request."""
+        return msal.ConfidentialClientApplication(
+            self.settings.client_id,
+            authority=f"{LOGIN_HOST}/organizations",
+            client_credential=self.settings.client_credential(),
+            token_cache=msal.TokenCache(),
+        )
+
+    def start_fix(self, session: dict, scope: str, login_hint: str) -> str:
+        flow = self._fix_app().initiate_auth_code_flow(
+            scopes=[scope], redirect_uri=self.settings.url("/auth/callback"), login_hint=login_hint)
+        session["fix_flow"] = {k: v for k, v in flow.items() if k != "auth_uri"}
+        return flow["auth_uri"]
+
+    def finish_fix(self, session: dict, params: dict) -> dict:
+        flow = session.pop("fix_flow", None)
+        if not flow:
+            raise LoginError("The approval took too long or was started in another tab. Please try again.")
+        try:
+            result = self._fix_app().acquire_token_by_auth_code_flow(flow, params)
+        except ValueError as exc:  # state mismatch
+            raise LoginError("The approval couldn't be verified. Please try again.") from exc
+        if "error" in result or "access_token" not in result:
+            raise LoginError(result.get("error_description") or result.get("error") or "Microsoft returned no token.")
+        claims = result.get("id_token_claims") or {}
+        return {"access_token": result["access_token"], "tid": claims.get("tid"), "oid": claims.get("oid")}
+
     def admin_consent_url(self, tenant_id: str, state: str) -> str:
         query = urlencode({
             "client_id": self.settings.client_id,

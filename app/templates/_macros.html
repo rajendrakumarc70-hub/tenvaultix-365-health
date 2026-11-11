@@ -58,6 +58,9 @@
     {% endif %}
     {% if r.plan_note and r.status == 'not_available' %}<p class="note">{{ r.plan_note }}</p>{% endif %}
     <div class="f-actions">
+      {% if fixable and r.id in fixable and r.status in ('fail', 'warn') %}
+      <a class="btn btn-primary btn-sm no-print" href="/app/fix/{{ r.id }}">Fix it for me</a>
+      {% endif %}
       {% if r.learn_more %}<a href="{{ r.learn_more }}" target="_blank" rel="noopener noreferrer">Microsoft's guide ↗</a>{% endif %}
       {% if show_cta and r.status in ('fail', 'warn') and settings and (settings.booking_url or settings.contact_email) %}
       <a class="btn btn-ghost btn-sm no-print" href="{{ settings.booking_url or ('mailto:' ~ settings.contact_email ~ '?subject=Help%20with%20' ~ r.title|urlencode) }}">Ask Tenvaultix to fix this</a>

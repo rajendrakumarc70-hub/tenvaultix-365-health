@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ fix.title }} · Tenvaultix{% endblock %}
+{% block head %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+<section class="page-head on-dark">
+  <div class="wrap narrow">
+    <span class="eyebrow">One-click fix · {{ fix.check_id }}</span>
+    <h1>{{ fix.title }}</h1>
+    {% if result %}<p class="sub">Your latest scan: {{ result.summary }}</p>{% endif %}
+  </div>
+</section>
+<div class="wrap narrow">
+  {% if result and result.status == 'pass' %}
+  <div class="banner"><p>Your latest scan says this setting is already fine. You can still continue; nothing changes if it already matches.</p></div>
+  {% endif %}
+  <section class="report-section">
+    <div class="card fix-card">
+      <div>
+        <h3>What we'll change</h3>
+        <p>{{ fix.change }}</p>
+      </div>
+      <div>
+        <h3>What your staff will notice</h3>
+        <p>{{ fix.notice }}</p>
+      </div>
+      <div>
+        <h3>How it works</h3>
+        <ol class="fix-steps">
+          <li>Microsoft asks you to sign in and approve one permission, <code>{{ fix.permission }}</code>. Your account needs the {{ fix.roles }} role.</li>
+          <li>We make this one change with your own admin rights, then read the setting back to check it worked.</li>
+          <li>We record what changed, by whom and when. You can undo it on the next page or from your dashboard.</li>
+        </ol>
+      </div>
+      <p class="note">We don't keep your sign-in after the change, and scanning stays read-only.</p>
+      <form method="post" action="/app/fix/{{ fix.check_id }}" class="btn-row">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn btn-primary" type="submit">Continue with Microsoft</button>
+        <a class="btn btn-ghost" href="{{ ('/app/report/' ~ latest.id ~ '#' ~ fix.check_id) if latest else '/app' }}">Cancel</a>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

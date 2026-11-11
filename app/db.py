@@ -45,6 +45,21 @@ CREATE TABLE IF NOT EXISTS scans (
     error TEXT
 );
 CREATE INDEX IF NOT EXISTS scans_by_tenant ON scans(tenant_id, id);
+CREATE TABLE IF NOT EXISTS fixes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    check_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    before TEXT,
+    after TEXT,
+    status TEXT NOT NULL,
+    error TEXT,
+    by_email TEXT NOT NULL,
+    at TEXT NOT NULL,
+    undo_of INTEGER,
+    undone_by INTEGER
+);
+CREATE INDEX IF NOT EXISTS fixes_by_tenant ON fixes(tenant_id, id);
 """
 STALE_SCAN = timedelta(minutes=30)
 
@@ -183,6 +198,40 @@ class Store:
             return [dict(r) for r in db.execute(
                 "SELECT id, status, started_at, finished_at, score, grade, problems, urgent, waste, error "
                 "FROM scans WHERE tenant_id = ? ORDER BY id DESC LIMIT ?", (tenant_id, limit))]
+
+    # ---------------------------------------------------------------- one-click fixes
+
+    def add_fix(self, tenant_id: str, check_id: str, action: str, *, before=None, after=None, status: str,
+                by_email: str, error: str | None = None, undo_of: int | None = None) -> int:
+        """Record a change (action 'apply' or 'undo'; status 'done', 'unverified' or 'failed')."""
+        with self._conn() as db:
+            cur = db.execute(
+                "INSERT INTO fixes (tenant_id, check_id, action, before, after, status, error, by_email, at, undo_of) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (tenant_id, check_id, action, json.dumps(before), json.dumps(after), status, error,
+                 by_email.lower(), _iso(utcnow()), undo_of))
+            if undo_of and status != "failed":
+                db.execute("UPDATE fixes SET undone_by = ? WHERE id = ? AND tenant_id = ?",
+                           (cur.lastrowid, undo_of, tenant_id))
+            return int(cur.lastrowid)
+
+    @staticmethod
+    def _fix(row) -> dict | None:
+        if not row:
+            return None
+        fix = dict(row)
+        fix["before"] = json.loads(fix["before"]) if fix["before"] else None
+        fix["after"] = json.loads(fix["after"]) if fix["after"] else None
+        return fix
+
+    def get_fix(self, fix_id: int) -> dict | None:
+        with self._conn() as db:
+            return self._fix(db.execute("SELECT * FROM fixes WHERE id = ?", (fix_id,)).fetchone())
+
+    def list_fixes(self, tenant_id: str, limit: int = 20) -> list[dict]:
+        with self._conn() as db:
+            return [self._fix(r) for r in db.execute(
+                "SELECT * FROM fixes WHERE tenant_id = ? ORDER BY id DESC LIMIT ?", (tenant_id, limit))]
 
     def running_scan(self, tenant_id: str) -> dict | None:
         """The scan in progress, if any. Scans stuck for 30+ minutes (server restarted) are marked failed."""
