@@ -10,6 +10,20 @@
   </div>
 </section>
 <div class="wrap narrow prose">
+  <h2>This server right now</h2>
+  <p>What the running app can see. Values are never shown, only whether each one is there.</p>
+  <div class="card table-wrap">
+    <table class="table">
+      <tbody>
+        <tr><td class="perm-name">TVX_CLIENT_ID</td><td>{% if settings.client_id %}<span class="chip good">set</span>{% else %}<span class="chip sev-high">missing</span>{% endif %} Microsoft Application (client) ID</td></tr>
+        <tr><td class="perm-name">TVX_CLIENT_SECRET / certificate</td><td>{% if settings.has_certificate %}<span class="chip good">certificate set</span>{% elif settings.client_secret %}<span class="chip good">client secret set</span>{% else %}<span class="chip sev-high">missing</span>{% endif %} The app's Microsoft credential</td></tr>
+        <tr><td class="perm-name">TVX_BASE_URL</td><td>{% if settings.base_url_source == 'default' %}<span class="chip sev-high">missing</span>{% else %}<span class="chip good">set</span>{% endif %} <code>{{ settings.base_url }}</code>{% if settings.base_url_source == 'Render' %} (Render's address for this service){% endif %}</td></tr>
+        <tr><td class="perm-name">TVX_SESSION_SECRET</td><td>{% if settings.session_secret_from_env %}<span class="chip good">set</span>{% else %}<span class="chip sev-medium">missing</span> using a temporary key: people are signed out when the app restarts{% endif %}</td></tr>
+        <tr><td class="perm-name">Running version</td><td>{{ settings.version or 'unknown' }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
   <h2>1. Register the app in Microsoft Entra</h2>
   <ol>
     <li>In your own Tenvaultix tenant, open Microsoft Entra admin center &gt; App registrations &gt; New registration.</li>

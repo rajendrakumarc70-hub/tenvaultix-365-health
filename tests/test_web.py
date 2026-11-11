@@ -85,6 +85,18 @@ def test_sign_in_not_configured_shows_setup_help(tmp_path):
     assert "set up yet" in page.text and "Setup guide" in page.text
 
 
+def test_setup_page_shows_which_settings_are_present_without_values(tmp_path):
+    page = World(tmp_path, configured=False).client().get("/setup").text
+    assert "not configured yet" in page and "missing" in page
+    settings = make_settings(client_secret="S3cr3t-value-xyz", session_secret="session-value-xyz")
+    app = create_app(settings=settings, store=Store(tmp_path / "s.db"), graph_factory=lambda tid: FakeGraph({}),
+                     resolver=tenant_resolver(), auth=FakeAuth(ADMIN), tenant_lookup=lambda d: None,
+                     sleep=lambda s: None)
+    page = TestClient(app).get("/setup").text
+    assert "Microsoft sign-in is <strong>configured</strong>" in page and "client secret set" in page
+    assert "S3cr3t-value-xyz" not in page and "session-value-xyz" not in page
+
+
 def test_dashboard_requires_sign_in(world):
     response = world.client().get("/app", follow_redirects=False)
     assert response.headers["location"] == "/login?next=/app"

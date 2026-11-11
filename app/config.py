@@ -55,7 +55,10 @@ class Settings:
     https_only: bool
     contact_email: str
     booking_url: str
-    cert_private_key: str = ""  # PEM text, for hosts that pass secrets as variables (Cloudflare)
+    cert_private_key: str = ""  # PEM text, for hosts that pass secrets as variables (Cloudflare, Render)
+    base_url_source: str = "TVX_BASE_URL"  # where base_url came from, shown on /setup
+    session_secret_from_env: bool = True  # False when a temporary random key is in use
+    version: str = ""  # commit the host deployed, if it tells us (Render does)
 
     @property
     def has_certificate(self) -> bool:
@@ -79,12 +82,18 @@ class Settings:
 
 def load_settings() -> Settings:
     session_secret = _env("TVX_SESSION_SECRET")
+    session_secret_from_env = bool(session_secret)
     if not session_secret:
         if _env("TVX_ENV") == "production":
             raise RuntimeError("TVX_SESSION_SECRET must be set in production.")
         log.warning("TVX_SESSION_SECRET not set; using a random key. Sign-ins won't survive a restart.")
         session_secret = secrets.token_urlsafe(32)
-    base_url = _env("TVX_BASE_URL", "http://localhost:8000")
+    # The public address: set explicitly, or the address Render gives the service, or local development.
+    base_url, base_url_source = _env("TVX_BASE_URL").rstrip("/"), "TVX_BASE_URL"
+    if not base_url and _env("RENDER_EXTERNAL_URL"):
+        base_url, base_url_source = _env("RENDER_EXTERNAL_URL").rstrip("/"), "Render"
+    if not base_url:
+        base_url, base_url_source = "http://localhost:8000", "default"
     return Settings(
         client_id=_env("TVX_CLIENT_ID"),
         client_secret=_env("TVX_CLIENT_SECRET"),
@@ -97,4 +106,7 @@ def load_settings() -> Settings:
         contact_email=_env("TVX_CONTACT_EMAIL"),
         booking_url=_env("TVX_BOOKING_URL"),
         cert_private_key=_env("TVX_CERT_PRIVATE_KEY").replace("\\n", "\n"),
+        base_url_source=base_url_source,
+        session_secret_from_env=session_secret_from_env,
+        version=(_env("TVX_VERSION") or _env("RENDER_GIT_COMMIT"))[:7],
     )
