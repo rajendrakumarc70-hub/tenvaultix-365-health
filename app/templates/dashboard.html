@@ -9,7 +9,7 @@
       <div>
         <span class="eyebrow">Dashboard</span>
         <h1>{{ tenant.name or 'Your company' }}</h1>
-        <p class="sub">Signed in as {{ user.email }} · <span class="chip plan">{{ plan_name }}</span>{% if days_left is not none %} · {{ days_left }} day{{ 's' if days_left != 1 }} of free trial left{% endif %}</p>
+        <p class="sub">Signed in as {{ user.email }} · <span class="chip plan">{{ licence.plan_name }}</span>{% if licence.key == 'trial' and licence.days_left is not none %} · {{ licence.days_left }} day{{ 's' if licence.days_left != 1 }} of free trial left{% elif licence.key in ('active', 'expiring') and licence.ends %} · licence valid until {{ licence.ends|day }}{% endif %}</p>
       </div>
       <div class="btn-row">
         <form method="post" action="/app/scan">
@@ -40,13 +40,28 @@
   {% if running %}
   <div class="banner"><p><strong>Scan in progress.</strong> It usually takes a minute or two. This page refreshes by itself.</p></div>
   {% endif %}
-  {% if not scanning_allowed %}
+  {% if licence.key == 'trial_ended' %}
   <div class="banner warn">
     <p><strong>Your free trial has ended.</strong> Your reports are still here. Choose a plan to keep scanning every week.</p>
     <a class="btn btn-primary btn-sm" href="{{ settings.booking_url or ('mailto:' ~ settings.contact_email if settings.contact_email else '/#pricing') }}">Choose a plan</a>
   </div>
-  {% elif days_left is not none and days_left <= 3 %}
-  <div class="banner warn"><p>Your free trial ends in {{ days_left }} day{{ 's' if days_left != 1 }}. Choose a plan to keep weekly scans running.</p></div>
+  {% elif licence.key == 'expired' %}
+  <div class="banner warn">
+    <p><strong>Your licence ended on {{ licence.ends|day }}.</strong> Your reports are still here; new scans are paused until it's renewed.</p>
+    <a class="btn btn-primary btn-sm" href="{{ settings.booking_url or ('mailto:' ~ settings.contact_email if settings.contact_email else '/#pricing') }}">Renew</a>
+  </div>
+  {% elif licence.key == 'suspended' %}
+  <div class="banner warn">
+    <p><strong>Your account is paused.</strong> Your reports are still here; new scans are paused. Contact Tenvaultix to resume.</p>
+    <a class="btn btn-primary btn-sm" href="{{ settings.booking_url or ('mailto:' ~ settings.contact_email if settings.contact_email else '/#pricing') }}">Contact us</a>
+  </div>
+  {% elif licence.key == 'trial' and licence.days_left is not none and licence.days_left <= 3 %}
+  <div class="banner warn"><p>Your free trial ends in {{ licence.days_left }} day{{ 's' if licence.days_left != 1 }}. Choose a plan to keep weekly scans running.</p></div>
+  {% elif licence.key == 'expiring' %}
+  <div class="banner warn"><p>Your licence ends on {{ licence.ends|day }} ({{ licence.days_left }} day{{ 's' if licence.days_left != 1 }} left). Contact us to renew so scans keep running.</p></div>
+  {% endif %}
+  {% if licence.over_seats %}
+  <div class="banner"><p>Your last scan found {{ '{:,}'.format(licence.users) }} licensed staff; your plan covers up to {{ '{:,}'.format(licence.seats) }}. Scans keep running. We'll be in touch about the right plan.</p></div>
   {% endif %}
 
   {% if not latest and not running %}

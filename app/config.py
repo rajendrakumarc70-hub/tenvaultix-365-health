@@ -29,14 +29,7 @@ GRAPH_PERMISSIONS = [
     ("DeviceManagementManagedDevices.Read.All", "Read whether Intune-managed devices meet your security rules."),
 ]
 
-PLANS = {
-    # plan id: (display name, days between automatic scans)
-    "trial": ("Free trial", 7),
-    "essentials": ("Essentials", 7),
-    "business": ("Business", 1),
-    "partner": ("Partner", 1),
-}
-TRIAL_DAYS = 14
+# Plans, prices and the trial length live in the database and are edited in the console (see licensing.py).
 
 
 def _env(name: str, default: str = "") -> str:

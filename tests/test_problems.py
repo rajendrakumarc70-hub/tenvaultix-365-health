@@ -117,7 +117,7 @@ def test_healthy_tenant_shows_working(world):
 
 def test_crash_shows_friendly_page_and_is_recorded(tmp_path):
     w = World(tmp_path)
-    w.store.list_tenants = lambda: 1 / 0  # break something the /ops page needs
+    w.store.list_customers = lambda: 1 / 0  # break something the errors page needs
     app = w.app
     ops = create_app(settings=make_settings(ops_emails=("ada@contoso.example",), ops_tenant_id=TENANT), store=w.store,
                      graph_factory=lambda tid: FakeGraph(tenant_routes()), resolver=tenant_resolver(), auth=w.auth,
@@ -125,12 +125,12 @@ def test_crash_shows_friendly_page_and_is_recorded(tmp_path):
     client = TestClient(ops, raise_server_exceptions=False)
     w.auth.user = ADMIN
     client.get("/login", follow_redirects=True)
-    page = client.get("/ops")
+    page = client.get("/admin/errors")
     assert page.status_code == 500 and "Something went wrong on our side" in page.text
     assert "ZeroDivisionError" not in page.text
     assert page.headers["Content-Security-Policy"].startswith("default-src 'self'")
     crash = w.store.list_problems()[0]
-    assert crash["code"] == "crash" and "ZeroDivisionError" in crash["detail"] and "/ops" in crash["detail"]
+    assert crash["code"] == "crash" and "ZeroDivisionError" in crash["detail"] and "/admin/errors" in crash["detail"]
     assert app  # the original app is untouched
 
 
@@ -150,47 +150,47 @@ def ops_world(tmp_path, check=None):
 
 def test_ops_page_is_for_the_tenvaultix_team_only(tmp_path):
     w = ops_world(tmp_path)
-    assert w.client().get("/ops", follow_redirects=False).headers["location"].startswith("/login")
-    assert w.client(STAFF).get("/ops").status_code == 404
-    assert w.client(OUTSIDER).get("/ops").status_code == 404
+    assert w.client().get("/admin/errors", follow_redirects=False).headers["location"].startswith("/login")
+    assert w.client(STAFF).get("/admin/errors").status_code == 404
+    assert w.client(OUTSIDER).get("/admin/errors").status_code == 404
     ada = w.client(ADMIN)
     w.connect(ada)
     w.store.add_problem("scan", "graph-403", "Insufficient privileges on /reports", TENANT)
-    page = ada.get("/ops").text
-    assert "Connected companies" in page and TENANT in page
+    page = ada.get("/ops", follow_redirects=True).text  # the old address still works
+    assert f"/admin/customers/{TENANT}" in page and "Contoso" in page
     assert "Insufficient privileges on /reports" in page  # the team sees details
 
 
 def test_ops_page_off_when_no_team_emails_set(world):
-    assert world.client(ADMIN).get("/ops").status_code == 404
+    assert world.client(ADMIN).get("/admin/errors").status_code == 404
 
 
 def test_ops_needs_the_tenvaultix_tenant_not_just_the_email(tmp_path):
     w = ops_world(tmp_path)
     impostor = {**ADMIN, "tid": "99999999-0000-0000-0000-000000000000"}  # same email, another tenant
-    assert w.client(impostor).get("/ops").status_code == 404
+    assert w.client(impostor).get("/admin/errors").status_code == 404
     w.app = create_app(settings=make_settings(ops_emails=("ada@contoso.example",)), store=w.store,
                        graph_factory=lambda tid: FakeGraph(w.routes), resolver=tenant_resolver(), auth=w.auth,
                        tenant_lookup=lambda d: None, sleep=lambda s: None)
-    assert w.client(ADMIN).get("/ops").status_code == 404  # no TVX_OPS_TENANT_ID set
+    assert w.client(ADMIN).get("/admin/errors").status_code == 404  # no TVX_OPS_TENANT_ID set
 
 
 def test_ops_credential_test_reports_result(tmp_path):
     w = ops_world(tmp_path)
     ada = w.client(ADMIN)
-    page = ada.post("/ops/test", data={"csrf": csrf_from(ada, "/ops")}, follow_redirects=True).text
+    page = ada.post("/admin/errors/test", data={"csrf": csrf_from(ada, "/admin/errors")}, follow_redirects=True).text
     assert "credential works" in page and w.checked == [TENANT]
 
     w = ops_world(tmp_path / "b", check=AuthError(BAD_SECRET))
     ada = w.client(ADMIN)
-    page = ada.post("/ops/test", data={"csrf": csrf_from(ada, "/ops")}, follow_redirects=True).text
+    page = ada.post("/admin/errors/test", data={"csrf": csrf_from(ada, "/admin/errors")}, follow_redirects=True).text
     assert "credential test failed" in page and "AADSTS7000215" in page
     assert w.store.list_problems()[0]["area"] == "credential"
 
 
 def test_ops_credential_test_needs_csrf(tmp_path):
     w = ops_world(tmp_path)
-    w.client(ADMIN).post("/ops/test", data={"csrf": "wrong"})
+    w.client(ADMIN).post("/admin/errors/test", data={"csrf": "wrong"})
     assert w.checked == []
 
 

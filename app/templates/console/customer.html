@@ -1,0 +1,94 @@
+{% extends "console/base.html" %}
+{% from "console/_macros.html" import licence_chip, until, seats %}
+{% block title %}{{ c.name or c.id }}{% endblock %}
+{% block crumb %}<a href="/admin/customers">Customers</a> /{% endblock %}
+{% block heading %}{{ c.name or 'Not named yet' }}{% endblock %}
+{% block actions %}{{ licence_chip(c.state) }}{% if not c.connected %}<span class="chip tone-na">not connected yet</span>{% endif %}{% endblock %}
+{% block content %}
+<div class="stat-row">
+  <div class="stat"><span>Plan</span><b>{{ c.plan_name }}</b><small>{{ until(c.state) }}</small></div>
+  <div class="stat"><span>₹ per month</span><b>{{ c.mrr|price('INR') if c.mrr else '–' }}</b><small>{% if c.price_inr is not none %}agreed price{% else %}list price{% endif %}{% if c.cycle == 'yearly' %}, billed yearly{% endif %}</small></div>
+  <div class="stat{{ ' alert' if c.over_seats }}"><span>Staff / seats</span><b>{{ seats(c) }}</b><small>licensed staff at the last scan</small></div>
+  <div class="stat"><span>Last scan</span><b>{% if c.last_scan and c.last_scan.status == 'done' %}{{ c.last_scan.score }} ({{ c.last_scan.grade }}){% elif c.last_scan %}Failed{% else %}–{% endif %}</b><small>{{ c.last_scan.started_at[:10] if c.last_scan else 'none yet' }}</small></div>
+</div>
+
+<div class="console-grid">
+  <section class="panel" id="licence">
+    <header class="panel-head"><h2>Licence</h2></header>
+    <form class="pad" method="post" action="/admin/customers/{{ c.id }}/licence">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="form-grid">
+        <label class="field"><span>Plan</span>
+          <select name="plan">{% for p in plans %}<option value="{{ p.id }}"{% if c.plan == p.id %} selected{% endif %}>{{ p.name }}{% if p.price_inr %} · {{ p.price_inr|price('INR') }}/{{ p.unit }}{% endif %}</option>{% endfor %}</select></label>
+        <label class="field"><span>Status</span>
+          <select name="status"><option value="active"{% if c.licence_status != 'suspended' %} selected{% endif %}>Active</option><option value="suspended"{% if c.licence_status == 'suspended' %} selected{% endif %}>Suspended (pause scans)</option></select></label>
+        <label class="field"><span>Valid until</span><input type="date" name="paid_until" value="{{ c.paid_until or '' }}"><small>{% if c.plan == 'trial' and not c.paid_until and c.trial_ends %}Trial ends {{ c.trial_ends[:10] }}. {% endif %}Empty = no end date.</small></label>
+        <label class="field"><span>Seats</span><input type="number" name="seats" min="1" value="{{ c.seats or '' }}" placeholder="plan's limit"></label>
+        <label class="field"><span>Price per month (₹)</span><input type="text" name="price" inputmode="decimal" value="{{ '%g'|format(c.price_inr) if c.price_inr is not none else '' }}" placeholder="plan's list price"></label>
+        <label class="field"><span>Billing</span><select name="cycle"><option value="monthly"{% if c.cycle != 'yearly' %} selected{% endif %}>Monthly</option><option value="yearly"{% if c.cycle == 'yearly' %} selected{% endif %}>Yearly</option></select></label>
+      </div>
+      <div class="btn-row form-actions"><button class="btn btn-primary btn-sm" type="submit">Save licence</button></div>
+    </form>
+    <div class="pad quick">
+      <span class="small muted">Quick:</span>
+      {% for action, label in [('month', 'Extend 1 month'), ('year', 'Extend 1 year'), ('resume' if c.licence_status == 'suspended' else 'suspend', 'Resume' if c.licence_status == 'suspended' else 'Suspend')] %}
+      <form method="post" action="/admin/customers/{{ c.id }}/quick"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="{{ action }}"><button class="btn btn-ghost btn-sm" type="submit">{{ label }}</button></form>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel" id="details">
+    <header class="panel-head"><h2>Customer details</h2></header>
+    <form class="pad" method="post" action="/admin/customers/{{ c.id }}/details">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="form-grid">
+        <label class="field"><span>Company (legal name)</span><input type="text" name="company" value="{{ c.company or '' }}" maxlength="120"></label>
+        <label class="field"><span>Domain</span><input type="text" name="domain" value="{{ c.domain or '' }}" maxlength="255"></label>
+        <label class="field"><span>Contact name</span><input type="text" name="contact_name" value="{{ c.contact_name or '' }}" maxlength="120"></label>
+        <label class="field"><span>Contact email</span><input type="email" name="contact_email" value="{{ c.contact_email or '' }}" maxlength="200"></label>
+        <label class="field"><span>Contact phone</span><input type="text" name="contact_phone" value="{{ c.contact_phone or '' }}" maxlength="40"></label>
+        <label class="field"><span>GSTIN</span><input type="text" name="gstin" value="{{ c.gstin or '' }}" maxlength="15" placeholder="29ABCDE1234F1Z5"></label>
+        <label class="field wide"><span>Billing address</span><textarea name="address" rows="2" maxlength="500">{{ c.address or '' }}</textarea></label>
+        <label class="field wide"><span>Notes (only your team sees these)</span><textarea name="notes" rows="3" maxlength="2000">{{ c.notes or '' }}</textarea></label>
+      </div>
+      <div class="btn-row form-actions"><button class="btn btn-primary btn-sm" type="submit">Save details</button></div>
+    </form>
+  </section>
+</div>
+
+<div class="console-grid">
+  <section class="panel">
+    <header class="panel-head"><h2>Licence history</h2></header>
+    {% if events %}
+    <ul class="timeline">
+      {% for e in events %}<li><p>{{ e.summary }}</p><span class="small muted">{{ e.at|date }} · {{ e.by_email or 'system' }}</span></li>{% endfor %}
+    </ul>
+    {% else %}<p class="muted pad">No changes yet.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <header class="panel-head"><h2>Microsoft 365 connection</h2></header>
+    <dl class="facts pad">
+      <dt>Tenant ID</dt><dd class="mono">{{ c.id }}</dd>
+      {% if c.connected %}
+      <dt>Connected</dt><dd>{{ c.connected_at|date }} by {{ c.connected_by }}</dd>
+      <dt>People with access</dt><dd>{% for m in members %}{{ m.email }}{{ ' (owner)' if m.role == 'owner' }}{{ ', ' if not loop.last }}{% endfor %}</dd>
+      {% else %}
+      <dt>Connected</dt><dd>Not yet. Their admin connects at <span class="mono">/connect</span>; this licence applies then.</dd>
+      {% endif %}
+    </dl>
+    {% if scans %}
+    <div class="table-wrap">
+      <table class="table dense">
+        <thead><tr><th>Scan</th><th>Result</th></tr></thead>
+        <tbody>{% for s in scans %}<tr><td class="small">{{ s.started_at|date }}</td><td class="small"><span class="status-dot {{ s.status }}"></span>{% if s.status == 'done' %}{{ s.score }} ({{ s.grade }}) · {{ s.problems }} problems{% elif s.status == 'failed' %}{{ s.error }}{% else %}running{% endif %}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    {% endif %}
+    {% if problems %}
+    <header class="panel-head"><h2>Recent errors</h2><a href="/admin/errors">All errors</a></header>
+    <ul class="plain-list">{% for p in problems %}<li><span>{{ p.title }} <span class="chip">{{ p.code }}</span></span><b>{{ p.count }}×</b></li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

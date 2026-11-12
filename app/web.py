@@ -20,16 +20,17 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import azure_costs, blueprint, demo, fixes, problems
+from . import azure_costs, blueprint, demo, fixes, licensing, problems
 from .auth import LoginError, MicrosoftAuth, consent_error_message, is_consent_admin
 from .checks import results_for_domain, run_checks
 from .collector import collect
-from .config import GRAPH_PERMISSIONS, PLANS, Settings, load_settings
+from .config import GRAPH_PERMISSIONS, Settings, load_settings
 from .db import Store, utcnow
 from .dnscheck import Resolver, SystemResolver, check_domain, lookup_m365_tenant, normalize_domain
 from .graph import AuthError, GraphClient, GraphError, app_token_provider, forget_tokens, token_roles
 from .licenses import prices_reviewed
-from .scanner import can_scan, run_scan, trial_days_left
+from .console import add_console
+from .scanner import can_scan, run_scan, scan_interval
 from .scoring import compare, sort_for_report, summarize
 
 log = logging.getLogger(__name__)
@@ -121,6 +122,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
     templates.env.filters["date"] = _fmt_date
     templates.env.filters["money"] = lambda v: f"${v:,.0f}" if v else "$0"
     templates.env.filters["cost"] = azure_costs.fmt_money
+    templates.env.filters["price"] = licensing.price_text
+    templates.env.filters["day"] = lambda d: d.strftime("%d %b %Y") if d else ""
     templates.env.filters["compact"] = azure_costs.compact
     templates.env.tests["onmicrosoft"] = lambda d: str(d).endswith(".onmicrosoft.com")
     domain_limiter = RateLimiter(20, 3600)
@@ -142,7 +145,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         log.exception("Unhandled error on %s %s", request.method, request.url.path)
         record("crash", "crash", f"{request.method} {request.url.path}: {type(exc).__name__}: {str(exc)[:200]}")
         response = templates.TemplateResponse(request, "message.html", {
-            "settings": settings, "user": None, "csrf": "", "flash": [], "plans": PLANS, "year": utcnow().year,
+            "settings": settings, "user": None, "csrf": "", "flash": [], "year": utcnow().year,
             "title": "Something went wrong on our side",
             "body": "The app hit an unexpected error. It's been logged. Please try again in a minute.",
             "actions": [("Back to home", "/")], "kind": "error"}, status_code=500)
@@ -157,7 +160,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         session.setdefault("csrf", secrets.token_urlsafe(24))
         base = {
             "settings": settings, "user": session.get("user"), "csrf": session["csrf"],
-            "flash": session.pop("flash", []), "plans": PLANS, "year": utcnow().year,
+            "flash": session.pop("flash", []), "year": utcnow().year,
         }
         return templates.TemplateResponse(request, name, {**base, **context}, status_code=status_code)
 
@@ -221,13 +224,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
 
     @app.get("/")
     def home(request: Request):
-        return render(request, "index.html", preview=demo_preview())
+        return render(request, "index.html", preview=demo_preview(), pricing=store.list_plans(public_only=True),
+                      trial_days=store.trial_days())
 
     @app.get("/check")
     def domain_check(request: Request, domain: str = ""):
         name = normalize_domain(domain)
         if not name:
             return render(request, "index.html", status_code=400, domain_value=domain, preview=demo_preview(),
+                          pricing=store.list_plans(public_only=True), trial_days=store.trial_days(),
                           domain_error="That doesn't look like a domain. Try something like yourcompany.com.")
         client = request.client.host if request.client else "unknown"
         if not domain_limiter.allow(client):
@@ -467,14 +472,21 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
                       health=connection_health(tenant, latest, scans), costs=store.get_costs(tenant["id"]),
                       running=running, scans=scans, members=store.list_members(tenant["id"]),
                       changes=store.list_fixes(tenant["id"]), fix_catalog=fixes.FIXES,
-                      days_left=trial_days_left(tenant), scanning_allowed=can_scan(tenant),
-                      plan_name=PLANS.get(tenant["plan"], (tenant["plan"],))[0])
+                      licence=licence_view(tenant, latest), scanning_allowed=can_scan(tenant))
+
+    def licence_view(tenant: dict, latest: dict | None) -> dict:
+        """The company's plan and licence, as its dashboard shows them."""
+        plan = store.get_plan(tenant["plan"]) or {}
+        users = licensing.staff_count(latest.get("meta")) if latest else None
+        seats = licensing.seat_limit(tenant, plan)
+        return {**licensing.state(tenant), "plan_name": plan.get("name", tenant["plan"]), "users": users,
+                "seats": seats, "over_seats": bool(users and seats and users > seats)}
 
     def connection_health(tenant: dict, latest: dict | None, scans: list[dict]) -> dict:
         """What's stopping this company's checks from working, in plain English, for the dashboard."""
         last = next((s for s in scans if s["status"] != "running"), None)
         blocked = (latest or {}).get("meta", {}).get("no_permission", []) if latest else []
-        interval = timedelta(days=PLANS.get(tenant["plan"], PLANS["trial"])[1])
+        interval = scan_interval(store, tenant)
         late = bool(latest and can_scan(tenant)
                     and utcnow() - datetime.fromisoformat(latest["started_at"]) > interval + timedelta(days=1))
         recent = problems.grouped(store.list_problems(limit=30, tenant_id=tenant["id"]))[:5]
@@ -502,7 +514,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         if not (tenant and role) or not csrf_ok(request, csrf):
             return RedirectResponse("/app", status_code=303)
         if not can_scan(tenant):
-            flash(request, "Your free trial has ended. Choose a plan to keep scanning.", "warn")
+            ended = {"suspended": "Your account is paused.", "expired": "Your licence has ended."}
+            flash(request, ended.get(licensing.state(tenant)["key"], "Your free trial has ended.")
+                  + " Contact Tenvaultix to keep scanning.", "warn")
         elif store.running_scan(tenant["id"]):
             flash(request, "A scan is already running.")
         else:
@@ -722,35 +736,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
             azure_view(tenant, refresh=True)
         return RedirectResponse("/app/azure", status_code=303)
 
-    # ------------------------------------------------------------ Tenvaultix team: problems across all companies
+    # ------------------------------------------------------------ Tenvaultix console (/admin)
 
-    @app.get("/ops")
-    def ops(request: Request):
-        user = request.session.get("user")
-        if not user:
-            return RedirectResponse("/login?next=/ops", status_code=303)
-        if not is_ops(user):
-            return message(request, "Page not found", "This page doesn't exist.", status_code=404)
-        tenants = []
-        for t in store.list_tenants():
-            scans = store.list_scans(t["id"], limit=1)
-            tenants.append({**t, "last": scans[0] if scans else None,
-                            "problem_count": len(store.list_problems(limit=100, tenant_id=t["id"]))})
-        return render(request, "ops.html", recent=store.list_problems(limit=100), tenants=tenants,
-                      hint=problems.hint)
-
-    @app.post("/ops/test")
-    def ops_test(request: Request, csrf: str = Form("")):
-        user = request.session.get("user")
-        if not is_ops(user) or not csrf_ok(request, csrf):
-            return RedirectResponse("/ops", status_code=303)
-        try:
-            credential_check(user["tid"])
-            flash(request, "The app's Microsoft credential works: Microsoft issued a token for your tenant.", "good")
-        except Exception as exc:  # AuthError, or msal/network errors
-            code = problems.code_for(str(exc), "credential")
-            record("credential", code, str(exc))
-            flash(request, f"The credential test failed: {problems.hint(code)['title']} ({code}).", "warn")
-        return RedirectResponse("/ops", status_code=303)
+    add_console(app, store=store, render=render, message=message, flash=flash, csrf_ok=csrf_ok, is_ops=is_ops,
+                record=record, credential_check=credential_check, tenant_lookup=tenant_lookup)
 
     return app

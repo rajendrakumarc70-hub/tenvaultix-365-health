@@ -1,0 +1,69 @@
+{% extends "console/base.html" %}
+{% from "console/_macros.html" import licence_chip, until, seats %}
+{% block title %}Overview{% endblock %}
+{% block heading %}Overview{% endblock %}
+{% block actions %}<a class="btn btn-primary btn-sm" href="/admin/customers/new">Add customer</a>{% endblock %}
+{% block content %}
+<div class="stat-row">
+  <div class="stat"><span>Monthly revenue</span><b>{{ stats.mrr|price('INR') }}</b><small>from licences that are active now</small></div>
+  <div class="stat"><span>Customers</span><b>{{ stats.customers }}</b><small>{{ stats.connected }} connected</small></div>
+  <div class="stat"><span>Paying</span><b>{{ stats.paying }}</b><small>with a price set</small></div>
+  <div class="stat"><span>On trial</span><b>{{ stats.trials }}</b><small>free trials running</small></div>
+  <div class="stat{{ ' alert' if stats.attention }}"><span>Needs attention</span><b>{{ stats.attention }}</b><small><a href="/admin/customers?show=attention">see the list</a></small></div>
+</div>
+
+<div class="console-grid">
+  <section class="panel">
+    <header class="panel-head"><h2>Needs attention</h2><a href="/admin/customers?show=attention">All</a></header>
+    {% if attention %}
+    <div class="table-wrap">
+      <table class="table dense">
+        <thead><tr><th>Customer</th><th>Licence</th><th>Why</th></tr></thead>
+        <tbody>
+        {% for c in attention %}
+          <tr>
+            <td><a href="/admin/customers/{{ c.id }}">{{ c.name or c.id }}</a><br><span class="small muted">{{ c.plan_name }}</span></td>
+            <td>{{ licence_chip(c.state) }}<br><span class="small muted">{{ until(c.state) }}</span></td>
+            <td class="small">{{ c.reasons|join('; ') }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="muted pad">Nothing needs attention.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <header class="panel-head"><h2>Customers by plan</h2><a href="/admin/pricing">Pricing</a></header>
+    {% if by_plan %}
+    <ul class="plain-list">
+      {% for name, count in by_plan %}<li><span>{{ name }}</span><b>{{ count }}</b></li>{% endfor %}
+    </ul>
+    {% else %}<p class="muted pad">No customers yet.</p>{% endif %}
+    <header class="panel-head"><h2>Errors kept</h2><a href="/admin/errors">Open</a></header>
+    <p class="pad"><b>{{ errors }}</b> <span class="muted">recent errors across all customers</span></p>
+  </section>
+</div>
+
+<section class="panel">
+  <header class="panel-head"><h2>Newest customers</h2><a href="/admin/customers">All customers</a></header>
+  {% if recent %}
+  <div class="table-wrap">
+    <table class="table dense">
+      <thead><tr><th>Customer</th><th>Plan</th><th>Licence</th><th>Staff / seats</th><th>Since</th></tr></thead>
+      <tbody>
+      {% for c in recent %}
+        <tr>
+          <td><a href="/admin/customers/{{ c.id }}">{{ c.name or c.id }}</a>{% if not c.connected %} <span class="chip tone-na">not connected</span>{% endif %}</td>
+          <td>{{ c.plan_name }}</td>
+          <td>{{ licence_chip(c.state) }}</td>
+          <td>{{ seats(c) }}</td>
+          <td class="small muted">{{ (c.created_at or '')[:10] }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted pad">No customers yet. When a company connects it appears here, or add one before they connect.</p>{% endif %}
+</section>
+{% endblock %}

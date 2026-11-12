@@ -1,0 +1,44 @@
+{% extends "console/base.html" %}
+{% from "console/_macros.html" import licence_chip, until, seats %}
+{% block title %}Customers{% endblock %}
+{% block heading %}Customers{% endblock %}
+{% block actions %}
+<a class="btn btn-ghost btn-sm" href="/admin/customers.csv">Download CSV</a>
+<a class="btn btn-primary btn-sm" href="/admin/customers/new">Add customer</a>
+{% endblock %}
+{% block content %}
+<form class="toolbar" method="get" action="/admin/customers">
+  <div class="tabs" role="tablist">
+    {% for key, label in filters.items() %}<a role="tab" class="{{ 'on' if show == key }}" aria-selected="{{ 'true' if show == key else 'false' }}" href="/admin/customers?show={{ key }}{% if q %}&amp;q={{ q|urlencode }}{% endif %}">{{ label }}</a>{% endfor %}
+  </div>
+  <input type="hidden" name="show" value="{{ show }}">
+  <label class="sr-only" for="q">Search customers</label>
+  <input id="q" type="search" name="q" value="{{ q }}" placeholder="Search name, domain, email, tenant ID">
+  <button class="btn btn-ghost btn-sm" type="submit">Search</button>
+</form>
+
+<section class="panel">
+  {% if rows %}
+  <div class="table-wrap">
+    <table class="table dense">
+      <thead><tr><th>Customer</th><th>Plan</th><th>Licence</th><th>Staff / seats</th><th class="num">₹ / month</th><th>Last scan</th></tr></thead>
+      <tbody>
+      {% for c in rows %}
+        <tr>
+          <td><a href="/admin/customers/{{ c.id }}"><b>{{ c.name or 'Not named yet' }}</b></a>{% if not c.connected %} <span class="chip tone-na">not connected</span>{% endif %}<br><span class="small muted">{{ c.domain or c.id }}</span></td>
+          <td>{{ c.plan_name }}{% if c.cycle == 'yearly' %} <span class="small muted">yearly</span>{% endif %}</td>
+          <td>{{ licence_chip(c.state) }}<br><span class="small muted">{{ until(c.state) }}</span></td>
+          <td>{{ seats(c) }}</td>
+          <td class="num">{{ c.mrr|price('INR') if c.mrr else '–' }}</td>
+          <td class="small">{% if c.last_scan %}<span class="status-dot {{ c.last_scan.status }}"></span>{% if c.last_scan.status == 'done' %}{{ c.last_scan.score }} ({{ c.last_scan.grade }}){% else %}failed{% endif %}<br><span class="muted">{{ c.last_scan.started_at[:10] }}</span>{% else %}<span class="muted">none yet</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted pad">{% if q or show != 'all' %}No customers match. <a href="/admin/customers">Show all</a>{% else %}No customers yet. When a company connects it appears here, or <a href="/admin/customers/new">add one</a> before they connect.{% endif %}</p>
+  {% endif %}
+</section>
+<p class="small muted">{{ rows|length }} shown. Staff = enabled, licensed people at the last scan.</p>
+{% endblock %}

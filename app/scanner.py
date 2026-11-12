@@ -5,11 +5,10 @@ import logging
 from datetime import datetime, timedelta
 from typing import Callable
 
-from . import blueprint
+from . import blueprint, licensing
 from .problems import code_for, graph_code
 from .checks import run_checks
 from .collector import NO_PERMISSION
-from .config import PLANS
 from .db import Store, utcnow
 from .graph import AuthError, GraphError
 from .scoring import summarize
@@ -57,15 +56,18 @@ def run_scan(store: Store, tenant_id: str, collect: CollectFn, scan_id: int | No
 
 
 def trial_days_left(tenant: dict) -> int | None:
-    if tenant["plan"] != "trial" or not tenant.get("trial_ends"):
-        return None
-    left = datetime.fromisoformat(tenant["trial_ends"]) - utcnow()
-    return max(0, left.days + (1 if left.seconds else 0))
+    st = licensing.state(tenant)
+    return st["days_left"] if st["key"] in ("trial", "trial_ended") else None
 
 
 def can_scan(tenant: dict) -> bool:
-    """Trials that have ended keep their reports but stop scanning until a plan is chosen."""
-    return tenant["plan"] != "trial" or (trial_days_left(tenant) or 0) > 0
+    """Scans run during a trial and while a licence is valid. Ended or suspended: reports stay, new scans pause."""
+    return licensing.state(tenant)["can_scan"]
+
+
+def scan_interval(store: Store, tenant: dict) -> timedelta:
+    plan = store.get_plan(tenant["plan"]) or store.get_plan("trial") or {}
+    return timedelta(days=plan.get("scan_days") or 7)
 
 
 def scan_due(store: Store, tenant: dict) -> bool:
@@ -74,5 +76,4 @@ def scan_due(store: Store, tenant: dict) -> bool:
     last = store.latest_scan(tenant["id"])
     if not last:
         return True
-    interval = timedelta(days=PLANS.get(tenant["plan"], PLANS["trial"])[1])
-    return utcnow() - datetime.fromisoformat(last["started_at"]) >= interval - timedelta(hours=1)
+    return utcnow() - datetime.fromisoformat(last["started_at"]) >= scan_interval(store, tenant) - timedelta(hours=1)

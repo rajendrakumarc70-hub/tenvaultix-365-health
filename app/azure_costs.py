@@ -187,7 +187,7 @@ def is_fresh(cached: dict | None, now: datetime | None = None) -> bool:
 
 # ---------------------------------------------------------------- showing it
 
-def _indian(n: int) -> str:
+def indian_grouping(n: int) -> str:
     """12345678 -> 1,23,45,678 (Indian digit grouping)."""
     text = str(n)
     if len(text) <= 3:
@@ -210,7 +210,7 @@ def fmt_money(value: float | None, currency: str = "") -> str:
     value = abs(value)
     if value >= 100:
         whole = int(round(value))
-        digits = _indian(whole) if currency == "INR" else f"{whole:,}"
+        digits = indian_grouping(whole) if currency == "INR" else f"{whole:,}"
         return f"{sign}{symbol}{digits}"
     return f"{sign}{symbol}{value:,.2f}"
 

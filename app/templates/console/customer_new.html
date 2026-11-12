@@ -1,0 +1,32 @@
+{% extends "console/base.html" %}
+{% block title %}Add customer{% endblock %}
+{% block crumb %}<a href="/admin/customers">Customers</a> /{% endblock %}
+{% block heading %}Add customer{% endblock %}
+{% block content %}
+{% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
+<form class="panel form-panel" method="post" action="/admin/customers/new">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <p class="muted">Set up a customer before they connect. When their admin connects, this licence applies instead of a free trial.</p>
+  <h2 class="form-title">Company</h2>
+  <div class="form-grid">
+    <label class="field"><span>Company name</span><input type="text" name="company" value="{{ form.company or '' }}" required maxlength="120"></label>
+    <label class="field"><span>Email domain or Microsoft tenant ID</span><input type="text" name="who" value="{{ form.who or '' }}" required placeholder="company.com" maxlength="255"><small>We look up the tenant ID from the domain.</small></label>
+    <label class="field"><span>Contact name</span><input type="text" name="contact_name" value="{{ form.contact_name or '' }}" maxlength="120"></label>
+    <label class="field"><span>Contact email</span><input type="email" name="contact_email" value="{{ form.contact_email or '' }}" maxlength="200"></label>
+    <label class="field"><span>Contact phone</span><input type="text" name="contact_phone" value="{{ form.contact_phone or '' }}" maxlength="40"></label>
+  </div>
+  <h2 class="form-title">Licence</h2>
+  <div class="form-grid">
+    <label class="field"><span>Plan</span>
+      <select name="plan">{% for p in plans %}<option value="{{ p.id }}"{% if (form.plan or 'trial') == p.id %} selected{% endif %}>{{ p.name }}{% if p.price_inr %} · {{ p.price_inr|price('INR') }}/{{ p.unit }}{% endif %}</option>{% endfor %}</select></label>
+    <label class="field"><span>Valid until</span><input type="date" name="paid_until" value="{{ form.paid_until or '' }}"><small>Empty = no end date (for a trial: the normal trial length).</small></label>
+    <label class="field"><span>Seats</span><input type="number" name="seats" min="1" value="{{ form.seats or '' }}" placeholder="plan's limit"></label>
+    <label class="field"><span>Price per month (₹)</span><input type="text" name="price" inputmode="decimal" value="{{ form.price or '' }}" placeholder="plan's list price"></label>
+    <label class="field"><span>Billing</span><select name="cycle"><option value="monthly"{% if form.cycle != 'yearly' %} selected{% endif %}>Monthly</option><option value="yearly"{% if form.cycle == 'yearly' %} selected{% endif %}>Yearly</option></select></label>
+  </div>
+  <div class="btn-row form-actions">
+    <button class="btn btn-primary" type="submit">Add customer</button>
+    <a class="btn btn-ghost" href="/admin/customers">Cancel</a>
+  </div>
+</form>
+{% endblock %}

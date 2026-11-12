@@ -3,7 +3,7 @@
   python -m app.cli scan-due                 # run every hour (cron, Azure WebJob, GitHub Actions)
   python -m app.cli scan <tenant-id>         # scan one tenant now
   python -m app.cli list                     # connected tenants, plans and last scores
-  python -m app.cli set-plan <tenant-id> <plan>   # trial | essentials | business | partner
+  python -m app.cli set-plan <tenant-id> <plan>   # a plan id from the console's Pricing page
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import logging
 import sys
 
 from .collector import collect
-from .config import PLANS, load_settings
+from .config import load_settings
 from .db import Store
 from .dnscheck import SystemResolver
 from .graph import GraphClient, app_token_provider
@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("list", help="list connected tenants")
     plan = sub.add_parser("set-plan", help="change a tenant's plan")
     plan.add_argument("tenant_id")
-    plan.add_argument("plan", choices=sorted(PLANS))
+    plan.add_argument("plan")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -49,9 +49,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "set-plan":
-        if not store.set_plan(args.tenant_id, args.plan):
+        if not store.get_plan(args.plan):
+            print(f"No plan {args.plan}. Plans: {', '.join(p['id'] for p in store.list_plans())}", file=sys.stderr)
+            return 1
+        if not store.get_tenant(args.tenant_id):
             print(f"No tenant {args.tenant_id}", file=sys.stderr)
             return 1
+        store.save_licence(args.tenant_id, {"plan": args.plan}, "command line", f"Plan set to {args.plan}")
         print(f"{args.tenant_id} is now on {args.plan}")
         return 0
 

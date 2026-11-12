@@ -17,7 +17,7 @@
       </form>
       <div class="hero-links">
         <a href="/demo">See a sample report →</a>
-        <a href="/connect">Connect Microsoft 365: 14 days free →</a>
+        <a href="/connect">Connect Microsoft 365: {{ trial_days }} days free →</a>
       </div>
       <ul class="trust">
         <li>Read-only access</li>
@@ -87,7 +87,7 @@
   <div class="wrap">
     <div class="section-head">
       <h2>Simple pricing per company</h2>
-      <p>One price for your whole Microsoft 365, not per user. Every paid plan starts with a 14-day free trial.</p>
+      <p>One price for your whole Microsoft 365, not per user. Every paid plan starts with a {{ trial_days }}-day free trial.</p>
     </div>
     <div class="plans">
       <div class="card plan">
@@ -101,44 +101,25 @@
         </ul>
         <a class="btn btn-ghost" href="/#domain">Check a domain</a>
       </div>
-      <div class="card plan">
-        <h3>Essentials</h3>
-        <p class="price">$39<small>/month</small></p>
-        <p class="price-alt">₹1,999/month in India · up to 50 users</p>
+      {% for p in pricing %}
+      <div class="card plan{{ ' featured' if p.featured }}" id="plan-{{ p.id }}">
+        {% if p.featured %}<span class="tag">Most popular</span>{% endif %}
+        <h3>{{ p.name }}</h3>
+        {% if p.price_usd is not none %}<p class="price">{{ p.price_usd|price('USD') }}<small>/{{ p.unit }}</small></p>
+        {% elif p.price_inr is not none %}<p class="price">{{ p.price_inr|price('INR') }}<small>/{{ p.unit }}</small></p>
+        {% else %}<p class="price">Ask us</p>{% endif %}
+        {% set alt = [] %}
+        {% if p.price_usd is not none and p.price_inr is not none %}{% set _ = alt.append((p.price_inr|price('INR')) ~ '/' ~ p.unit ~ ' in India') %}{% endif %}
+        {% if p.tagline %}{% set _ = alt.append(p.tagline) %}{% endif %}
+        {% if p.max_users %}{% set _ = alt.append('up to ' ~ '{:,}'.format(p.max_users) ~ ' users') %}{% endif %}
+        <p class="price-alt">{{ alt|join(' · ') or '&nbsp;'|safe }}</p>
         <ul>
-          <li>All 20 checks, every week</li>
-          <li>Money-wasted estimate</li>
-          <li>Step-by-step fix guides</li>
-          <li>PDF report for insurers and auditors</li>
+          {% for f in p.features %}{% if f.lower().startswith('soon:') %}<li class="soon">{{ f[5:].strip() }} (coming soon)</li>{% else %}<li>{{ f }}</li>{% endif %}{% endfor %}
         </ul>
-        <a class="btn btn-primary" href="/connect">Start free trial</a>
+        {% if p.cta == 'contact' %}<a class="btn btn-ghost" href="{{ settings.booking_url or ('mailto:' ~ settings.contact_email if settings.contact_email else '/connect') }}">Talk to us</a>
+        {% else %}<a class="btn btn-primary" href="/connect">Start free trial</a>{% endif %}
       </div>
-      <div class="card plan featured">
-        <span class="tag">Most popular</span>
-        <h3>Business</h3>
-        <p class="price">$79<small>/month</small></p>
-        <p class="price-alt">₹4,999/month in India · up to 200 users</p>
-        <ul>
-          <li>Everything in Essentials</li>
-          <li>Daily scans</li>
-          <li>History: what changed and when</li>
-          <li>Team access for your IT people</li>
-          <li class="soon">Instant email alerts (coming soon)</li>
-        </ul>
-        <a class="btn btn-primary" href="/connect">Start free trial</a>
-      </div>
-      <div class="card plan">
-        <h3>Partner</h3>
-        <p class="price">$15<small>/tenant/month</small></p>
-        <p class="price-alt">For IT providers</p>
-        <ul>
-          <li>Daily scans for each customer</li>
-          <li>Reports you can share with customers</li>
-          <li class="soon">All tenants on one screen (coming soon)</li>
-          <li class="soon">Your logo on reports (coming soon)</li>
-        </ul>
-        <a class="btn btn-ghost" href="{{ settings.booking_url or ('mailto:' ~ settings.contact_email if settings.contact_email else '/connect') }}">Talk to us</a>
-      </div>
+      {% endfor %}
     </div>
   </div>
 </section>
@@ -161,7 +142,7 @@
     <div class="cta-card">
       <div>
         <h3>See where you stand in two minutes</h3>
-        <p>Connect your Microsoft 365 and get your first full report today. The first 14 days are free.</p>
+        <p>Connect your Microsoft 365 and get your first full report today. The first {{ trial_days }} days are free.</p>
       </div>
       <div class="btn-row">
         <a class="btn btn-sky" href="/connect">Start free trial</a>

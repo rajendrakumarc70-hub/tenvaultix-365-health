@@ -1,0 +1,31 @@
+{% extends "console/base.html" %}
+{% block title %}Errors{% endblock %}
+{% block heading %}Errors{% endblock %}
+{% block actions %}
+<form method="post" action="/admin/errors/test">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button class="btn btn-primary btn-sm" type="submit">Test the app's Microsoft credential</button>
+</form>
+{% endblock %}
+{% block content %}
+<p class="muted">Every failure across all customers, newest first (the last 100). Running version {{ settings.version or 'unknown' }}.</p>
+<section class="panel">
+  {% if recent %}
+  <div class="table-wrap">
+    <table class="table dense">
+      <thead><tr><th>When</th><th>Where</th><th>What happened</th><th>Details</th></tr></thead>
+      <tbody>
+      {% for p in recent %}{% set h = hint(p.code) %}
+        <tr>
+          <td class="small">{{ p.at|date }}</td>
+          <td class="small">{{ p.area }}{% if p.tenant_id %}<br><a href="/admin/customers/{{ p.tenant_id }}">{{ names.get(p.tenant_id) or p.tenant_id }}</a>{% endif %}</td>
+          <td>{{ h.title }} <span class="chip">{{ p.code }}</span><br><span class="small">{{ h.advice }}</span></td>
+          <td class="small muted wrap-anywhere">{{ p.detail }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted pad">No errors recorded.</p>{% endif %}
+</section>
+{% endblock %}

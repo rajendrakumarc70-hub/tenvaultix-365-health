@@ -1,0 +1,72 @@
+{% extends "console/base.html" %}
+{% block title %}Pricing{% endblock %}
+{% block heading %}Pricing{% endblock %}
+{% block actions %}<a class="btn btn-ghost btn-sm" href="/#pricing" target="_blank" rel="noopener">See the public pricing page</a>{% endblock %}
+{% block content %}
+<p class="muted">Changes show on the public pricing page as soon as you save. Customers keep their own agreed price (set on their licence) until you change it.</p>
+
+<div class="plan-editor">
+{% for p in plans %}
+  <form class="panel plan-card{{ ' hidden-plan' if not p.public }}" id="plan-{{ p.id }}" method="post" action="/admin/pricing/{{ p.id }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <header class="panel-head">
+      <h2>{{ p.name }} <span class="small muted mono">{{ p.id }}</span></h2>
+      <span>{% if p.id == 'trial' %}<span class="chip tone-info">free trial</span>{% elif p.public %}<span class="chip tone-good">on pricing page</span>{% else %}<span class="chip tone-na">hidden</span>{% endif %}{% if p.featured %} <span class="chip tone-warn">most popular</span>{% endif %}</span>
+    </header>
+    <div class="pad">
+      <div class="form-grid">
+        <label class="field"><span>Name</span><input type="text" name="name" value="{{ p.name }}" required maxlength="40"></label>
+        {% if p.id != 'trial' %}
+        <label class="field"><span>Price in India (₹)</span><input type="text" name="price_inr" inputmode="decimal" value="{{ '%g'|format(p.price_inr) if p.price_inr is not none else '' }}" placeholder="empty = not shown"></label>
+        <label class="field"><span>Price elsewhere ($)</span><input type="text" name="price_usd" inputmode="decimal" value="{{ '%g'|format(p.price_usd) if p.price_usd is not none else '' }}" placeholder="empty = not shown"></label>
+        <label class="field"><span>Price is per</span><select name="unit">{% for u in units %}<option value="{{ u }}"{% if p.unit == u %} selected{% endif %}>{{ u }}</option>{% endfor %}</select></label>
+        <label class="field"><span>User limit</span><input type="number" name="max_users" min="1" value="{{ p.max_users or '' }}" placeholder="no limit"></label>
+        {% endif %}
+        <label class="field"><span>Scan every (days)</span><input type="number" name="scan_days" min="1" max="31" value="{{ p.scan_days }}"></label>
+        {% if p.id != 'trial' %}
+        <label class="field"><span>Order on the page</span><input type="number" name="sort" min="0" max="99" value="{{ p.sort }}"></label>
+        <label class="field"><span>Button</span><select name="cta">{% for k, label in ctas.items() %}<option value="{{ k }}"{% if p.cta == k %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label class="field wide"><span>Short line under the price</span><input type="text" name="tagline" value="{{ p.tagline or '' }}" maxlength="80" placeholder="e.g. For IT providers"></label>
+        <label class="field wide"><span>Features, one per line</span><textarea name="features" rows="5">{{ p.features|join('\n') }}</textarea><small>Start a line with <span class="mono">soon:</span> to show it as coming soon.</small></label>
+        <label class="check"><input type="checkbox" name="public" value="1"{% if p.public %} checked{% endif %}> Show on pricing page</label>
+        <label class="check"><input type="checkbox" name="featured" value="1"{% if p.featured %} checked{% endif %}> Mark “Most popular”</label>
+        {% else %}
+        <input type="hidden" name="sort" value="0"><input type="hidden" name="cta" value="trial"><input type="hidden" name="unit" value="month">
+        {% endif %}
+      </div>
+      <div class="btn-row form-actions">
+        <button class="btn btn-primary btn-sm" type="submit">Save {{ p.name }}</button>
+        <span class="small muted">{{ in_use[p.id] }} customer{{ 's' if in_use[p.id] != 1 }} on this plan{% if p.updated_by %} · last changed by {{ p.updated_by }}, {{ p.updated_at|date }}{% endif %}</span>
+      </div>
+    </div>
+  </form>
+  {% if p.id != 'trial' and not in_use[p.id] %}
+  <form class="delete-plan" method="post" action="/admin/pricing/{{ p.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-ghost btn-sm" type="submit">Delete {{ p.name }}</button></form>
+  {% endif %}
+{% endfor %}
+</div>
+
+<div class="console-grid">
+  <form class="panel" id="new-plan" method="post" action="/admin/pricing/new">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <header class="panel-head"><h2>Add a plan</h2></header>
+    <div class="pad">
+      <div class="form-grid">
+        <label class="field"><span>Plan ID</span><input type="text" name="plan_id" required pattern="[a-z][a-z0-9-]{1,23}" placeholder="e.g. enterprise" maxlength="24"><small>Lower case, can't be changed later.</small></label>
+        <label class="field"><span>Name</span><input type="text" name="name" required maxlength="40" placeholder="e.g. Enterprise"></label>
+      </div>
+      <div class="btn-row form-actions"><button class="btn btn-primary btn-sm" type="submit">Add plan</button></div>
+    </div>
+  </form>
+  <form class="panel" id="trial" method="post" action="/admin/pricing/trial">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <header class="panel-head"><h2>Free trial length</h2></header>
+    <div class="pad">
+      <div class="form-grid">
+        <label class="field"><span>Days</span><input type="number" name="trial_days" min="1" max="90" value="{{ trial_days }}"></label>
+      </div>
+      <div class="btn-row form-actions"><button class="btn btn-primary btn-sm" type="submit">Save</button><span class="small muted">For new trials. Running trials keep their end date.</span></div>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -170,7 +170,7 @@ set in `wrangler.jsonc`, and a fresh deploy picks up new secrets.)
 
 Tip: every one of these errors is also recorded. Open **/setup** on the site to see recent ones with the fix, or
 set `TVX_OPS_EMAILS` to your work email and `TVX_OPS_TENANT_ID` to the **Directory (tenant) ID**
-(on the app registration's Overview page), then open **/ops** for the full list and a **Test the app's Microsoft
+(on the app registration's Overview page), then open **/admin/errors** (in the Tenvaultix console) for the full list and a **Test the app's Microsoft
 credential** button.
 
 ## Optional: Azure spend

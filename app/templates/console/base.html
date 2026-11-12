@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{% block title %}Console{% endblock %} · Tenvaultix Console</title>
+  <link rel="icon" href="/static/favicon.png">
+  <link rel="stylesheet" href="/static/style.css?v=7">
+</head>
+<body class="console">
+<div class="console-shell">
+  <aside class="console-side">
+    <a class="console-brand" href="/admin"><img src="/static/favicon.png" alt="" width="28" height="28"><span>Tenvaultix<small>Console</small></span></a>
+    <nav class="console-nav" aria-label="Console">
+      <a href="/admin" class="{{ 'on' if nav == 'overview' }}"{% if nav == 'overview' %} aria-current="page"{% endif %}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h5v5H2zM9 2h5v3H9zM9 7h5v7H9zM2 9h5v5H2z"/></svg>Overview</a>
+      <a href="/admin/customers" class="{{ 'on' if nav == 'customers' }}"{% if nav == 'customers' %} aria-current="page"{% endif %}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5" r="2.6"/><path d="M1.5 13.5c.4-2.6 2.2-4 4.5-4s4.1 1.4 4.5 4z"/><circle cx="11.5" cy="5.5" r="2"/><path d="M11 9.6c1.8 0 3.2 1.1 3.5 3.4h-3"/></svg>Customers</a>
+      <a href="/admin/pricing" class="{{ 'on' if nav == 'pricing' }}"{% if nav == 'pricing' %} aria-current="page"{% endif %}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h6l6 6-6 6-6-6z"/><circle cx="5.2" cy="5.2" r="1.2" class="cut"/></svg>Pricing</a>
+      <a href="/admin/errors" class="{{ 'on' if nav == 'errors' }}"{% if nav == 'errors' %} aria-current="page"{% endif %}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 15 14H1z"/><rect x="7.2" y="5.5" width="1.6" height="4.5" class="cut"/><rect x="7.2" y="11" width="1.6" height="1.6" class="cut"/></svg>Errors</a>
+      <a href="/admin/backup" class="{{ 'on' if nav == 'backup' }}"{% if nav == 'backup' %} aria-current="page"{% endif %}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="3.5" rx="6" ry="2"/><path d="M2 3.5v9c0 1.1 2.7 2 6 2s6-.9 6-2v-9c0 1.1-2.7 2-6 2s-6-.9-6-2z"/></svg>Backup</a>
+    </nav>
+    <div class="console-me">
+      <span>{{ user.email if user else '' }}</span>
+      <a href="/">Back to the site</a>
+      <a href="/logout">Sign out</a>
+    </div>
+  </aside>
+  <div class="console-main">
+    <header class="console-top">
+      <div>
+        <p class="console-crumb">{% block crumb %}Tenvaultix Console{% endblock %}</p>
+        <h1>{% block heading %}{% endblock %}</h1>
+      </div>
+      <div class="btn-row">{% block actions %}{% endblock %}</div>
+    </header>
+    {% for f in flash %}<div class="flash {{ f.kind }}" role="status">{{ f.text }}</div>{% endfor %}
+    {% block content %}{% endblock %}
+  </div>
+</div>
+<script src="/static/app.js?v=3" defer></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{% macro licence_chip(st) -%}
+<span class="chip tone-{{ st.tone }}">{{ st.label }}</span>
+{%- endmacro %}
+
+{% macro until(st) -%}
+{% if st.ends %}{% if st.key in ('expired', 'trial_ended') %}ended {{ st.ends|day }}{% else %}until {{ st.ends|day }}{% if st.days_left is not none and st.days_left <= 30 %} · {{ st.days_left }} day{{ 's' if st.days_left != 1 }}{% endif %}{% endif %}{% else %}no end date{% endif %}
+{%- endmacro %}
+
+{% macro seats(c) -%}
+{% if c.users is not none %}{{ '{:,}'.format(c.users) }}{% else %}–{% endif %}{% if c.seats_limit %} / {{ '{:,}'.format(c.seats_limit) }}{% endif %}{% if c.over_seats %} <span class="chip tone-warn">over</span>{% endif %}
+{%- endmacro %}

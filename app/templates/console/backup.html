@@ -1,0 +1,31 @@
+{% extends "console/base.html" %}
+{% block title %}Backup{% endblock %}
+{% block heading %}Backup and restore{% endblock %}
+{% block content %}
+<div class="flash warn" role="note"><strong>On Render's free plan the disk is wiped on every restart and deploy.</strong> Download a backup after changing licences or prices, and restore it after a deploy. A permanent database removes this step.</div>
+<div class="console-grid">
+  <section class="panel">
+    <header class="panel-head"><h2>Download</h2></header>
+    <div class="pad">
+      <p>The backup holds your {{ counts.plans }} plans and prices, {{ counts.accounts }} customer records and licences, and {{ counts.events }} licence history entries. It doesn't include scan reports.</p>
+      <div class="btn-row">
+        <a class="btn btn-primary btn-sm" href="/admin/backup.json">Download backup</a>
+        <a class="btn btn-ghost btn-sm" href="/admin/customers.csv">Customers as CSV (for Excel)</a>
+      </div>
+      <p class="small muted section-gap">The file has customer contact details. Keep it somewhere private.</p>
+    </div>
+  </section>
+  <form class="panel" method="post" action="/admin/restore" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <header class="panel-head"><h2>Restore</h2></header>
+    <div class="pad">
+      <p>Replaces all plans, prices, customer records and licence history with the ones in the file. Connected companies and their reports aren't touched.</p>
+      <div class="form-grid">
+        <label class="field wide"><span>Backup file</span><input type="file" name="backup_file" accept="application/json,.json" required></label>
+        <label class="field"><span>Type RESTORE to confirm</span><input type="text" name="confirm" autocomplete="off" required></label>
+      </div>
+      <div class="btn-row form-actions"><button class="btn btn-danger btn-sm" type="submit">Restore from file</button></div>
+    </div>
+  </form>
+</div>
+{% endblock %}
