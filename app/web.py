@@ -27,7 +27,7 @@ from .collector import collect
 from .config import GRAPH_PERMISSIONS, PLANS, Settings, load_settings
 from .db import Store, utcnow
 from .dnscheck import Resolver, SystemResolver, check_domain, lookup_m365_tenant, normalize_domain
-from .graph import AuthError, GraphClient, GraphError, app_token_provider
+from .graph import AuthError, GraphClient, GraphError, app_token_provider, forget_tokens, token_roles
 from .licenses import prices_reviewed
 from .scanner import can_scan, run_scan, trial_days_left
 from .scoring import compare, sort_for_report, summarize
@@ -84,7 +84,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
                sleep: Callable[[float], None] = time.sleep,
                delegated_graph: Callable[[str], GraphClient] | None = None,
                credential_check: Callable[[str], None] | None = None,
-               arm_factory: Callable[[str], GraphClient] | None = None) -> FastAPI:
+               arm_factory: Callable[[str], GraphClient] | None = None,
+               app_roles: Callable[[str], list[str]] | None = None) -> FastAPI:
     settings = settings or load_settings()
     store = store or Store(settings.database_path)
     resolver = resolver or SystemResolver()
@@ -101,6 +102,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
             return GraphClient(app_token_provider(settings, tenant_id, azure_costs.ARM_SCOPE),
                                root=azure_costs.ARM_ROOT, max_retries=1, timeout=20,
                                sleep=lambda seconds: time.sleep(min(seconds, 5)))  # someone is waiting on the page
+    if app_roles is None:
+        def app_roles(tenant_id: str) -> list[str]:  # what Microsoft actually granted the app in that tenant
+            forget_tokens(tenant_id)
+            return token_roles(app_token_provider(settings, tenant_id)())
     if credential_check is None:
         def credential_check(tenant_id: str) -> None:  # raises if Microsoft won't issue the app a token
             app_token_provider(settings, tenant_id)()
@@ -352,6 +357,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
                            "signed in to. Sign in with an account from the company you want to check.",
                            actions=[("Sign in again", "/logout")], kind="error")
         request.session["pending_tenant"] = user["tid"]
+        request.session["connect_tries"] = 0
+        forget_tokens(user["tid"])  # tokens from before this approval don't carry its permissions
         return finish_connect(request, background)
 
     @app.get("/connect/verify")
@@ -366,11 +373,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         if store.get_tenant(tenant_id):
             request.session.pop("pending_tenant", None)
             return RedirectResponse("/app", status_code=303)
-        graph = graph_factory(tenant_id)
         is_admin, last_error = None, None
         for attempt in range(3):  # Microsoft can take a few seconds to apply a fresh approval
+            forget_tokens(tenant_id)  # ask for a new token each time; a cached one may predate the approval
             try:
-                is_admin = is_consent_admin(graph, user["oid"])
+                is_admin = is_consent_admin(graph_factory(tenant_id), user["oid"])
                 break
             except (AuthError, GraphError) as exc:
                 log.info("Consent not active yet for %s (attempt %s): %s", tenant_id, attempt + 1, exc)
@@ -378,21 +385,64 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
                 sleep(3)
         if is_admin is None:
             fallback = problems.graph_code(last_error.status) if isinstance(last_error, GraphError) else "graph-401"
-            record("connect", problems.code_for(str(last_error), fallback), str(last_error), tenant_id)
-            return message(request, "Almost there",
-                           "Microsoft is still applying your approval. This usually takes less than a minute.",
-                           actions=[("Try again", "/connect/verify")])
+            code = problems.code_for(str(last_error), fallback)
+            record("connect", code, str(last_error), tenant_id)
+            tries = request.session.get("connect_tries", 0) + 1
+            request.session["connect_tries"] = tries
+            if tries < 2:
+                return message(request, "Almost there",
+                               "Microsoft is still applying your approval. This usually takes less than a minute. "
+                               "If it happens again, we'll show you what Microsoft says.",
+                               actions=[("Try again", "/connect/verify")])
+            return connect_blocked(request, tenant_id, code, last_error)
         if not is_admin:
             request.session.pop("pending_tenant", None)
             return message(request, "An admin needs to connect",
                            "Only a Global Administrator or Privileged Role Administrator can connect your company. "
                            "Ask them to sign in here and press Connect.", kind="error")
         request.session.pop("pending_tenant", None)
+        request.session.pop("connect_tries", None)
         store.create_tenant(tenant_id, None, user["email"])
         scan_id = store.start_scan(tenant_id)
         background.add_task(run_scan, store, tenant_id, collect_tenant, scan_id)
         flash(request, "Connected. Your first health check is running and usually takes a minute or two.", "good")
         return RedirectResponse("/app", status_code=303)
+
+    def connect_blocked(request: Request, tenant_id: str, code: str, error: Exception | None):
+        """The approval still isn't working after a few tries: say what Microsoft is telling us, and what to do."""
+        actions = [("Try again", "/connect/verify"), ("Approve again", "/connect/start"), ("Setup guide", "/setup")]
+        if isinstance(error, GraphError) and error.forbidden:
+            try:
+                roles = app_roles(tenant_id)
+            except Exception as exc:  # the token itself failed; fall back to the general advice
+                log.info("Couldn't read the app's permissions for %s: %s", tenant_id, exc)
+                roles = None
+            if roles == []:
+                body = ("Microsoft accepted the approval but gave the app no application permissions in your "
+                        "company. This usually means the permissions in the app registration were added as "
+                        "Delegated instead of Application, or admin consent wasn't granted for them. In Microsoft "
+                        "Entra admin center open App registrations > Tenvaultix 365 Health Check > API "
+                        "permissions. Every Microsoft Graph permission except User.Read should say Type: "
+                        "Application and Status: Granted. Fix any that don't, press \"Grant admin consent\", "
+                        "then press Try again here.")
+            elif roles:
+                needed = {"Directory.Read.All", "RoleManagement.Read.Directory"}
+                if needed & set(roles):
+                    body = ("Microsoft has granted the permissions but is still switching them on. Wait two or "
+                            "three minutes, then press Try again.")
+                else:
+                    body = (f"The app has {len(roles)} application permission{'s' if len(roles) != 1 else ''} in "
+                            "your company, but not Directory.Read.All or RoleManagement.Read.Directory, which it "
+                            "needs to check who is an admin. Add the missing ones in App registrations > API "
+                            "permissions (type Application), press \"Grant admin consent\", then Try again.")
+            else:
+                body = ("Microsoft refused the app's request to read your directory. Check the app registration's "
+                        "API permissions are type Application and show Granted, then press Try again.")
+        else:
+            hint = problems.hint(code)
+            body = f"{hint['title']}. {hint['advice']}"
+        return message(request, "Not connected yet", f"{body} (Microsoft code: {code})", actions=actions,
+                       kind="error")
 
     # ------------------------------------------------------------ signed-in app
 

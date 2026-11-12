@@ -5,8 +5,10 @@ for *their* tenant with our own certificate or secret - we never see or store a 
 """
 from __future__ import annotations
 
+import base64
 import csv
 import io
+import json
 import logging
 import threading
 import time
@@ -69,6 +71,25 @@ def app_token_provider(settings: Settings, tenant_id: str, scope: str = GRAPH_SC
         return result["access_token"]
 
     return get_token
+
+
+def forget_tokens(tenant_id: str) -> None:
+    """Drop the cached app and its tokens for a tenant, so the next request gets a brand-new token.
+
+    MSAL keeps an app-only token for about an hour. A token issued in the seconds before an admin's approval has
+    fully applied carries no permissions, and reusing it would keep failing until it expires."""
+    with _apps_lock:
+        _apps.pop(tenant_id, None)
+
+
+def token_roles(token: str) -> list[str]:
+    """The application permissions Microsoft put in an access token. Only used to explain a refusal."""
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        return sorted(json.loads(base64.urlsafe_b64decode(payload)).get("roles", []))
+    except (IndexError, ValueError, AttributeError):
+        return []
 
 
 class GraphClient:

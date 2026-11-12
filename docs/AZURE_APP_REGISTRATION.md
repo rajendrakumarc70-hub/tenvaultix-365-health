@@ -166,6 +166,7 @@ set in `wrangler.jsonc`, and a fresh deploy picks up new secrets.)
 | AADSTS90094 / "Need admin approval" | The person isn't an admin | A Global Administrator must connect |
 | "Unverified" on the approval screen | Publisher verification not done yet | Step 5.7 |
 | Sign-in page says "isn't set up yet" | The app can't see the values from step 6 | Step 6, then check **/setup** |
+| "Almost there" keeps coming back, then "Not connected yet" | The app's token has no application permissions | Step 3: every Graph permission except User.Read must be type **Application** with status **Granted**. Press **Grant admin consent**, then **Try again** |
 
 Tip: every one of these errors is also recorded. Open **/setup** on the site to see recent ones with the fix, or
 set `TVX_OPS_EMAILS` to your work email and `TVX_OPS_TENANT_ID` to the **Directory (tenant) ID**

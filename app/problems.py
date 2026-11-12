@@ -36,6 +36,9 @@ HINTS: dict[str, tuple[str, str]] = {
                     "The company's own sign-in rules blocked this. Their admin can allow the Tenvaultix app."),
     "AADSTS7000112": ("The app is disabled in that company",
                       "Their admin disabled the app in Entra (Enterprise applications). Ask them to enable it."),
+    "AADSTS7000229": ("The app isn't set up in that company yet",
+                      "Microsoft hasn't finished adding the app after the approval. Wait a minute and try again; if "
+                      "it keeps happening, approve access again from the Connect page."),
     "AADSTS500011": ("The app isn't set up in that company yet",
                      "A Global Administrator needs to connect the company from the Connect page first."),
     "graph-401": ("Microsoft refused the app's access",
