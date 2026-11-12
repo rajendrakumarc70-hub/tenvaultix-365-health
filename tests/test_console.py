@@ -319,3 +319,26 @@ def test_backup_download_and_restore(tmp_path):
     bad = {"backup_file": ("x.json", b"{not json", "application/json")}
     page = ada.post("/admin/restore", data={"csrf": t, "confirm": "RESTORE"}, files=bad, follow_redirects=True).text
     assert "Nothing was restored" in page
+
+
+def test_setup_page_explains_console_access(tmp_path):
+    w = World(tmp_path)  # no console settings
+    page = w.client(ADMIN).get("/setup").text
+    assert "needed to open the console" in page and "Console access for you" in page
+    assert TENANT in page  # shows the signed-in person their own tenant ID to copy
+    w = console_world(tmp_path / "b")
+    page = w.client(ADMIN).get("/setup").text
+    assert "Open the console" in page
+    page = w.client(STAFF).get("/setup").text
+    assert "bob@contoso.example</code> isn&#39;t in TVX_OPS_EMAILS" in page or "isn't in TVX_OPS_EMAILS" in page
+    assert "ada@contoso.example" not in page  # the configured list itself is never shown
+    assert "Console access for you" not in w.client().get("/setup").text
+
+
+def test_console_settings_tolerate_quotes_and_spaces(monkeypatch):
+    from app.config import load_settings
+    monkeypatch.setenv("TVX_OPS_EMAILS", ' "Rajendra@Tenvaultix.com" ; ops@tenvaultix.com ')
+    monkeypatch.setenv("TVX_OPS_TENANT_ID", " 'ABCDEF01-2345-6789-ABCD-EF0123456789' ")
+    settings = load_settings()
+    assert settings.ops_emails == ("rajendra@tenvaultix.com", "ops@tenvaultix.com")
+    assert settings.ops_tenant_id == "abcdef01-2345-6789-abcd-ef0123456789"

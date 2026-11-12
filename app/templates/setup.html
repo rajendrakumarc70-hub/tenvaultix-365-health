@@ -19,6 +19,13 @@
         <tr><td class="perm-name">TVX_CLIENT_SECRET / certificate</td><td>{% if settings.has_certificate %}<span class="chip good">certificate set</span>{% elif settings.client_secret %}<span class="chip good">client secret set</span>{% else %}<span class="chip sev-high">missing</span>{% endif %} The app's Microsoft credential</td></tr>
         <tr><td class="perm-name">TVX_BASE_URL</td><td>{% if settings.base_url_source == 'default' %}<span class="chip sev-high">missing</span>{% else %}<span class="chip good">set</span>{% endif %} <code>{{ settings.base_url }}</code>{% if settings.base_url_source == 'Render' %} (Render's address for this service){% endif %}</td></tr>
         <tr><td class="perm-name">TVX_SESSION_SECRET</td><td>{% if settings.session_secret_from_env %}<span class="chip good">set</span>{% else %}<span class="chip sev-medium">missing</span> using a temporary key: people are signed out when the app restarts{% endif %}</td></tr>
+        <tr><td class="perm-name">TVX_OPS_EMAILS</td><td>{% if console.emails %}<span class="chip good">set</span> {{ console.emails }} email{{ 's' if console.emails != 1 }}{% else %}<span class="chip sev-medium">missing</span> needed to open the console at /admin{% endif %}</td></tr>
+        <tr><td class="perm-name">TVX_OPS_TENANT_ID</td><td>{% if not console.tenant_set %}<span class="chip sev-medium">missing</span> needed to open the console at /admin{% elif console.tenant_looks_right %}<span class="chip good">set</span>{% else %}<span class="chip sev-high">doesn't look like a tenant ID</span> it should look like 1a2b3c4d-1234-5678-9abc-def012345678{% endif %}</td></tr>
+        {% if console.me %}
+        <tr><td class="perm-name">Console access for you</td><td>{% if console.me.allowed %}<span class="chip good">yes</span> <a href="/admin">Open the console</a>{% else %}<span class="chip sev-high">no</span>
+          {% if not console.me.email_listed %} Your sign-in email <code>{{ console.me.email }}</code> isn't in TVX_OPS_EMAILS.{% endif %}
+          {% if not console.me.tenant_matches %} TVX_OPS_TENANT_ID doesn't match the tenant you signed in from. Yours is <code>{{ console.me.tid }}</code>.{% endif %}{% endif %}</td></tr>
+        {% endif %}
         <tr><td class="perm-name">Running version</td><td>{{ settings.version or 'unknown' }}</td></tr>
       </tbody>
     </table>

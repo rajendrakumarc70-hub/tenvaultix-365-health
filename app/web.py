@@ -268,7 +268,20 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
     def setup(request: Request):
         recent = problems.grouped(store.list_problems(limit=50, server_only=True))
         return render(request, "setup.html", permissions=GRAPH_PERMISSIONS, fix_permissions=fixes.FIX_PERMISSIONS,
-                      recent_problems=recent[:6])
+                      recent_problems=recent[:6], console=console_check(request.session.get("user")))
+
+    def console_check(user: dict | None) -> dict:
+        """Whether the console settings are in place and, for the person signed in, whether they match.
+        Shows only the signed-in person's own email and tenant, never the configured values."""
+        check = {"emails": len(settings.ops_emails), "tenant_set": bool(settings.ops_tenant_id),
+                 "tenant_looks_right": bool(re.fullmatch(r"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}",
+                                                         settings.ops_tenant_id))}
+        if user:
+            check["me"] = {"email": user["email"], "tid": user["tid"],
+                           "email_listed": user["email"].lower() in settings.ops_emails,
+                           "tenant_matches": user["tid"].lower() == settings.ops_tenant_id,
+                           "allowed": is_ops(user)}
+        return check
 
     @app.get("/healthz")
     def healthz():

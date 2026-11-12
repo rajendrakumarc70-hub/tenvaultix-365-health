@@ -104,6 +104,7 @@ def load_settings() -> Settings:
         base_url_source=base_url_source,
         session_secret_from_env=session_secret_from_env,
         version=(_env("TVX_VERSION") or _env("RENDER_GIT_COMMIT"))[:7],
-        ops_emails=tuple(e.strip().lower() for e in _env("TVX_OPS_EMAILS").split(",") if e.strip()),
-        ops_tenant_id=_env("TVX_OPS_TENANT_ID").strip().lower(),
+        ops_emails=tuple(e.strip(" '\"").lower() for e in _env("TVX_OPS_EMAILS").replace(";", ",").split(",")
+                         if e.strip(" '\"")),
+        ops_tenant_id=_env("TVX_OPS_TENANT_ID").strip(" '\"").lower(),
     )
