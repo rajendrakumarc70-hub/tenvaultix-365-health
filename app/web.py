@@ -427,14 +427,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
                         "then press Try again here.")
             elif roles:
                 needed = {"Directory.Read.All", "RoleManagement.Read.Directory"}
+                missing = [name for name, _ in GRAPH_PERMISSIONS if name not in roles]
                 if needed & set(roles):
                     body = ("Microsoft has granted the permissions but is still switching them on. Wait two or "
                             "three minutes, then press Try again.")
                 else:
-                    body = (f"The app has {len(roles)} application permission{'s' if len(roles) != 1 else ''} in "
-                            "your company, but not Directory.Read.All or RoleManagement.Read.Directory, which it "
-                            "needs to check who is an admin. Add the missing ones in App registrations > API "
-                            "permissions (type Application), press \"Grant admin consent\", then Try again.")
+                    body = (f"The app has {len(roles)} of the {len(GRAPH_PERMISSIONS)} application permissions it "
+                            f"needs in your company ({', '.join(roles)}). Still missing: {', '.join(missing)}. "
+                            "In App registrations > API permissions, add each missing one as type Application, "
+                            "press \"Grant admin consent\", wait a minute, then press Try again.")
             else:
                 body = ("Microsoft refused the app's request to read your directory. Check the app registration's "
                         "API permissions are type Application and show Granted, then press Try again.")

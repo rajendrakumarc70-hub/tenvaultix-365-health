@@ -81,7 +81,9 @@ def test_permissions_missing_the_directory_ones(tmp_path):
     ada = w.client(ADMIN)
     w.connect(ada)
     page = ada.get("/connect/verify").text
-    assert "1 application permission" in page and "RoleManagement.Read.Directory" in page
+    assert "1 of the 10 application permissions" in page and "(Policy.Read.All)" in page
+    assert "Still missing: Directory.Read.All, AuditLog.Read.All" in page
+    assert "Policy.Read.All," not in page.split("Still missing:")[1]
 
 
 def test_token_refused_shows_the_microsoft_hint(tmp_path):
