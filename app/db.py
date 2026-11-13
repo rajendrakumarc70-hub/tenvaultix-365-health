@@ -244,6 +244,24 @@ class Store:
         with self._conn() as db:
             db.execute("INSERT OR REPLACE INTO options (key, value) VALUES (?, ?)", (key, value))
 
+    def take_lease(self, key: str, owner: str, duration: timedelta) -> bool:
+        """Claim (or renew) a named lease for `duration`, unless someone else holds an unexpired one."""
+        now = utcnow()
+        with self._conn() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT value FROM options WHERE key = ?", (key,)).fetchone()
+            if row:
+                holder, _, until = row["value"].partition("|")
+                try:
+                    held = holder != owner and datetime.fromisoformat(until) > now
+                except ValueError:
+                    held = False
+                if held:
+                    return False
+            db.execute("INSERT OR REPLACE INTO options (key, value) VALUES (?, ?)",
+                       (key, f"{owner}|{_iso(now + duration)}"))
+            return True
+
     def trial_days(self) -> int:
         value = self.get_option("trial_days")
         return int(value) if value.isdigit() else licensing.DEFAULT_TRIAL_DAYS
@@ -317,12 +335,72 @@ class Store:
 
     # ---------------------------------------------------------------- backup (the free host's disk is temporary)
 
+    def backup_to(self, target) -> None:
+        """A consistent copy of the whole database (SQLite's online backup), to a path or a binary stream."""
+        import os
+        import tempfile
+
+        if hasattr(target, "write"):
+            fd, tmp = tempfile.mkstemp(suffix=".db")
+            os.close(fd)
+            try:
+                self.backup_to(tmp)
+                with open(tmp, "rb") as fh:
+                    target.write(fh.read())
+                target.flush()
+            finally:
+                os.unlink(tmp)
+            return
+        src = sqlite3.connect(self.path, timeout=15)
+        dst = sqlite3.connect(str(target))
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+            src.close()
+
+    def restore_from(self, source) -> None:
+        """Replace the whole database with a backup made by backup_to (a path or a binary stream)."""
+        import os
+        import tempfile
+
+        if hasattr(source, "read"):
+            fd, tmp = tempfile.mkstemp(suffix=".db")
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(source.read())
+            try:
+                self.restore_from(tmp)
+            finally:
+                os.unlink(tmp)
+            return
+        src = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
+        try:
+            try:
+                tables = {r[0] for r in src.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            except sqlite3.DatabaseError:
+                tables = set()
+            if not {"tenants", "scans"} <= tables:
+                raise ValueError("That file isn't a Tenvaultix database backup.")
+            dst = sqlite3.connect(self.path, timeout=15)
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
+        with self._conn() as db:  # a backup from an older version gets any newer tables and the default plans
+            db.executescript(SCHEMA)
+            if not db.execute("SELECT COUNT(*) FROM plans").fetchone()[0]:
+                for plan in licensing.DEFAULT_PLANS:
+                    self._write_plan(db, plan, None)
+
     def export_admin(self) -> dict:
         with self._conn() as db:
             return {
                 "kind": "tenvaultix-console-backup", "version": 1, "exported_at": _iso(utcnow()),
                 "plans": [self._plan(r) for r in db.execute("SELECT * FROM plans ORDER BY sort")],
-                "options": {r["key"]: r["value"] for r in db.execute("SELECT * FROM options")},
+                "options": {r["key"]: r["value"] for r in db.execute("SELECT * FROM options")
+                            if not r["key"].startswith("scheduler_")},
                 "accounts": [dict(r) for r in db.execute("SELECT * FROM accounts")],
                 "licence_events": [dict(r) for r in db.execute("SELECT * FROM licence_events ORDER BY id")],
             }
@@ -339,8 +417,10 @@ class Store:
             db.execute("DELETE FROM plans")
             for plan in plans:
                 self._write_plan(db, plan, by)
-            db.execute("DELETE FROM options")
+            db.execute("DELETE FROM options WHERE key NOT LIKE 'scheduler_%'")
             for key, value in (data.get("options") or {}).items():
+                if str(key).startswith("scheduler_"):
+                    continue
                 db.execute("INSERT INTO options (key, value) VALUES (?, ?)", (str(key)[:64], str(value)[:500]))
             db.execute("DELETE FROM accounts")
             for acc in data.get("accounts") or []:

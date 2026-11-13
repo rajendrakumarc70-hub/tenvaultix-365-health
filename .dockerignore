@@ -8,3 +8,5 @@ tests
 src
 *.md
 .env
+deploy
+**/.env

@@ -1,0 +1,58 @@
+# Tenvaultix 365 Health Check on one Linux server: an Azure VM or a Hyper-V VM.
+# Settings live in deploy/.env (install.sh creates it from env.example). Then, from this folder:
+#   sudo docker compose up -d --build
+# COMPOSE_PROFILES in .env picks how the site is reached from the internet:
+#   caddy  - the server has a public IP (Azure VM): Caddy gets and renews the HTTPS certificate itself
+#   tunnel - the server is behind a router (Hyper-V in the office): Cloudflare Tunnel, no ports opened
+name: tenvaultix
+
+services:
+  app:
+    build: ..
+    image: tenvaultix-365-health:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TVX_BASE_URL: https://${TVX_DOMAIN}
+      TVX_DB_PATH: /srv/data/health.db
+      TVX_SCHEDULER: "on"
+      TVX_VERSION: ${TVX_VERSION:-}
+    volumes:
+      - appdata:/srv/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  caddy:
+    image: caddy:2.8
+    profiles: ["caddy"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      TVX_DOMAIN: ${TVX_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+  tunnel:
+    image: cloudflare/cloudflared:2024.12.2
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - app
+
+volumes:
+  appdata:        # the database: keeps customers, licences and reports across restarts and updates
+  caddy_data:     # HTTPS certificates
+  caddy_config:

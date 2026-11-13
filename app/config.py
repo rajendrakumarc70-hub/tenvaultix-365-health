@@ -53,6 +53,7 @@ class Settings:
     session_secret_from_env: bool = True  # False when a temporary random key is in use
     version: str = ""  # commit the host deployed, if it tells us (Render does)
     ops_emails: tuple[str, ...] = ()  # Tenvaultix team members who may open /ops (TVX_OPS_EMAILS, comma-separated)
+    scheduler: bool = False  # TVX_SCHEDULER=on: run due scans automatically inside the web app
     ops_tenant_id: str = ""  # the Tenvaultix tenant those people sign in from (TVX_OPS_TENANT_ID); both are required
 
     @property
@@ -107,4 +108,5 @@ def load_settings() -> Settings:
         ops_emails=tuple(e.strip(" '\"").lower() for e in _env("TVX_OPS_EMAILS").replace(";", ",").split(",")
                          if e.strip(" '\"")),
         ops_tenant_id=_env("TVX_OPS_TENANT_ID").strip(" '\"").lower(),
+        scheduler=_env("TVX_SCHEDULER").lower() in ("on", "1", "true", "yes"),
     )

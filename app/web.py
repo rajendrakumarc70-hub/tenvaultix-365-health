@@ -10,6 +10,7 @@ import secrets
 import threading
 import time
 from collections import defaultdict, deque
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
@@ -20,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import azure_costs, blueprint, demo, fixes, licensing, problems
+from . import azure_costs, blueprint, demo, fixes, licensing, problems, scheduler
 from .auth import LoginError, MicrosoftAuth, consent_error_message, is_consent_admin
 from .checks import results_for_domain, run_checks
 from .collector import collect
@@ -114,7 +115,14 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
     def collect_tenant(tenant_id: str) -> dict:
         return collect(graph_factory(tenant_id), resolver, tenant_id)
 
-    app = FastAPI(title="Tenvaultix 365 Health Check", docs_url=None, redoc_url=None, openapi_url=None)
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        if settings.scheduler:
+            scheduler.start(store, collect_tenant)
+        yield
+
+    app = FastAPI(title="Tenvaultix 365 Health Check", docs_url=None, redoc_url=None, openapi_url=None,
+                  lifespan=lifespan)
     app.add_middleware(SessionMiddleware, secret_key=settings.session_secret, session_cookie="tvx_session",
                        max_age=8 * 3600, same_site="lax", https_only=settings.https_only)
     app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
@@ -268,7 +276,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
     def setup(request: Request):
         recent = problems.grouped(store.list_problems(limit=50, server_only=True))
         return render(request, "setup.html", permissions=GRAPH_PERMISSIONS, fix_permissions=fixes.FIX_PERMISSIONS,
-                      recent_problems=recent[:6], console=console_check(request.session.get("user")))
+                      recent_problems=recent[:6], console=console_check(request.session.get("user")),
+                      scheduler_last=scheduler.last_run(store))
 
     def console_check(user: dict | None) -> dict:
         """Whether the console settings are in place and, for the person signed in, whether they match.

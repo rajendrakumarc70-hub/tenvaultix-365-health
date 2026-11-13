@@ -184,22 +184,30 @@ database to persistent storage (for example Cloudflare D1, or PostgreSQL) and se
 `TVX_SESSION_SECRET` before going live. Scheduled scans (`python -m app.cli scan-due`) also need a trigger,
 for example a Cron Trigger on the Worker.
 
-## Deploy elsewhere
+## Deploy to your own server (Azure VM or Hyper-V)
 
-The same container also runs on **Azure Container Apps** or **App Service for Containers**:
+The production setup: one Ubuntu server running Docker, with HTTPS from Caddy (or a Cloudflare Tunnel for an
+office server behind a router), automatic scans inside the app (`TVX_SCHEDULER=on`) and nightly database
+backups. Everything is in [`deploy/`](deploy/) and the step-by-step guide is
+[docs/DEPLOY_SERVER.md](docs/DEPLOY_SERVER.md):
 
-- Set the environment variables from `.env.example` in the app's configuration (store the certificate or
-  secret in Azure Key Vault and reference it).
-- Give `/srv/data` persistent storage (Azure Files) so the SQLite database survives restarts. SQLite is fine
-  for a single instance and the first few hundred tenants; move to PostgreSQL before running more than one
-  instance.
-- Health probe: `GET /healthz`.
-- **Scheduled scans:** run `python -m app.cli scan-due` every hour (a Container Apps scheduled job, App
-  Service WebJob or cron) with the same environment and storage. It scans each tenant whose interval has
-  passed: weekly on trial and Essentials, daily on Business and Partner. Trials that have ended keep their
-  reports but stop scanning.
+```bash
+curl -fsSL https://raw.githubusercontent.com/rajendrakumarc70-hub/tenvaultix-365-health/main/deploy/install.sh -o install.sh
+bash install.sh                                  # Docker, the app in /opt/tenvaultix, deploy/.env, nightly backup
+sudo nano /opt/tenvaultix/deploy/.env            # domain, Microsoft app values, console access
+sudo bash /opt/tenvaultix/deploy/update.sh       # build and start; run again to update
+```
 
-Plans aren't wired to a payment provider yet. For now, change a customer's plan after they pay:
+**Azure App Service / Container Apps:** not yet. Their storage is a network share, which Microsoft says can't
+hold a SQLite database; the app needs PostgreSQL support first. Use an Azure VM until then.
+
+**Scheduled scans:** `TVX_SCHEDULER=on` runs them inside the web app (the server setup turns it on). Without
+it, run `python -m app.cli scan-due` every hour from cron. Either way, each company is scanned when its plan's
+interval has passed (weekly on the trial and Essentials, daily on Business and Partner, as set on the console's
+Pricing page); ended or suspended licences are skipped.
+
+**Database backup:** `python -m app.cli backup <file>` makes a safe copy while the app runs
+(`deploy/backup.sh` uses it). Plans and licences are changed in the console (`/admin`); from the command line:
 
 ```bash
 python -m app.cli list

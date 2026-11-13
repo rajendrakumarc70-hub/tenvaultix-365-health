@@ -26,6 +26,7 @@
           {% if not console.me.email_listed %} Your sign-in email <code>{{ console.me.email }}</code> isn't in TVX_OPS_EMAILS.{% endif %}
           {% if not console.me.tenant_matches %} TVX_OPS_TENANT_ID doesn't match the tenant you signed in from. Yours is <code>{{ console.me.tid }}</code>.{% endif %}{% endif %}</td></tr>
         {% endif %}
+        <tr><td class="perm-name">TVX_SCHEDULER</td><td>{% if settings.scheduler %}<span class="chip good">on</span> automatic scans{% if scheduler_last %} · last check {{ scheduler_last.at|date }}, {{ scheduler_last.scans }} scan{{ 's' if scheduler_last.scans != 1 }}{% else %} · first check within a minute of starting{% endif %}{% else %}<span class="chip sev-medium">off</span> weekly and daily scans only run if <code>python -m app.cli scan-due</code> runs every hour. Set TVX_SCHEDULER=on to run them inside the app.{% endif %}</td></tr>
         <tr><td class="perm-name">Running version</td><td>{{ settings.version or 'unknown' }}</td></tr>
       </tbody>
     </table>

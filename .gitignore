@@ -11,3 +11,4 @@ node_modules/
 .wrangler/
 data/.session-secret
 app.log
+deploy/backups/
