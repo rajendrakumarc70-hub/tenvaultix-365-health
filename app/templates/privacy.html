@@ -18,7 +18,7 @@
     </table>
   </div>
   <p>We never read email content, files, chats or calendars, and scanning can't change anything in your tenant.</p>
-  <p><strong>One-click fixes (optional).</strong> When an admin chooses a fix, Microsoft asks them to approve one permission for that change. We make only that change, with their own admin rights, record what changed, by whom and when, and don't keep their sign-in afterwards. Every fix can be undone.</p>
+  <p><strong>One-click fixes (optional).</strong> When an admin chooses a fix, Microsoft asks them to approve one permission for that change. We make only that change, with their own admin rights, record what changed, by whom and when, and don't keep their sign-in afterwards. Every fix can be undone, and the result page shows how to remove the approved permission.</p>
 
   <p><strong>Azure spend (optional).</strong> If your company gives our app the <em>Cost Management Reader</em> role on its Azure subscriptions, we read this month's costs per day, service and subscription. That role can only read costs and budgets; it can't see or change your servers, data or settings. You can remove it at any time in the Azure portal (Access control).</p>
 
@@ -31,13 +31,14 @@
     <li><strong>Your customer record:</strong> if you buy a plan, the company name, contact and billing details (such as GSTIN and address) and your licence, so we can invoice you. We keep this after you disconnect, for our accounts; ask us and we'll delete what the law lets us.</li>
     <li><strong>Error records:</strong> when something fails (a sign-in, a scan, an Azure read), the time, Microsoft's error code and message, so we can fix it. We keep the most recent 500 across all customers.</li>
   </ul>
+  <p>Reports are kept for {% if settings.keep_reports_days %}{{ (settings.keep_reports_days / 30.4)|round|int }} months; older ones are deleted automatically, except your latest report{% else %}as long as your company stays connected{% endif %}.</p>
   <p>We don't store raw copies of your directory, mailbox settings or logs. Each scan reads them, works out the findings and discards the rest.</p>
 
   <h2>Free domain check</h2>
   <p>The free check only looks up public DNS records for the domain you type. We don't save the domain or link it to you.</p>
 
   <h2>Sign-in</h2>
-  <p>You sign in on Microsoft's pages. We receive your name, email address and organization ID, and never your password. We use one session cookie to keep you signed in; it expires after 8 hours.</p>
+  <p>You sign in on Microsoft's pages. We receive your name, email address and organization ID, and never your password. We use one session cookie to keep you signed in; it expires after 8 hours, and signing out ends it on our server straight away. The sign-out page can also end your sign-in on every device.</p>
 
   <h2>Deleting your data</h2>
   <p>The owner can press <em>Disconnect</em> on the dashboard at any time, which deletes every report and team entry for your company immediately. To withdraw our read access as well, remove the app in Microsoft Entra admin center &gt; Enterprise apps.</p>

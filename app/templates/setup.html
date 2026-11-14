@@ -19,15 +19,19 @@
         <tr><td class="perm-name">TVX_CLIENT_SECRET / certificate</td><td>{% if settings.has_certificate %}<span class="chip good">certificate set</span>{% elif settings.client_secret %}<span class="chip good">client secret set</span>{% else %}<span class="chip sev-high">missing</span>{% endif %} The app's Microsoft credential</td></tr>
         <tr><td class="perm-name">TVX_BASE_URL</td><td>{% if settings.base_url_source == 'default' %}<span class="chip sev-high">missing</span>{% else %}<span class="chip good">set</span>{% endif %} <code>{{ settings.base_url }}</code>{% if settings.base_url_source == 'Render' %} (Render's address for this service){% endif %}</td></tr>
         <tr><td class="perm-name">TVX_SESSION_SECRET</td><td>{% if settings.session_secret_from_env %}<span class="chip good">set</span>{% else %}<span class="chip sev-medium">missing</span> using a temporary key: people are signed out when the app restarts{% endif %}</td></tr>
-        <tr><td class="perm-name">TVX_OPS_EMAILS</td><td>{% if console.emails %}<span class="chip good">set</span> {{ console.emails }} email{{ 's' if console.emails != 1 }}{% else %}<span class="chip sev-medium">missing</span> needed to open the console at /admin{% endif %}</td></tr>
+        <tr><td class="perm-name">Database</td><td><span class="chip good">{{ database }}</span>{% if database == 'SQLite' %} a single file on this server; set TVX_DATABASE_URL for PostgreSQL when you have many customers{% endif %}</td></tr>
+        <tr><td class="perm-name">TVX_OPS_EMAILS</td><td>{% if console.emails %}<span class="chip good">set</span> {{ console.emails }} email{{ 's' if console.emails != 1 }}{% elif console.object_ids %}<span class="chip good">not needed</span> TVX_OPS_OBJECT_IDS is used instead{% else %}<span class="chip sev-medium">missing</span> needed to open the console at /admin{% endif %}</td></tr>
+        <tr><td class="perm-name">TVX_OPS_OBJECT_IDS</td><td>{% if console.object_ids %}<span class="chip good">set</span> {{ console.object_ids }} account{{ 's' if console.object_ids != 1 }}: the console checks account IDs, not emails{% else %}<span class="chip sev-medium">not set</span> recommended: the console then checks each person's permanent account ID instead of their email{% endif %}</td></tr>
         <tr><td class="perm-name">TVX_OPS_TENANT_ID</td><td>{% if not console.tenant_set %}<span class="chip sev-medium">missing</span> needed to open the console at /admin{% elif console.tenant_looks_right %}<span class="chip good">set</span>{% else %}<span class="chip sev-high">doesn't look like a tenant ID</span> it should look like 1a2b3c4d-1234-5678-9abc-def012345678{% endif %}</td></tr>
         {% if console.me %}
-        <tr><td class="perm-name">Console access for you</td><td>{% if console.me.allowed %}<span class="chip good">yes</span> <a href="/admin">Open the console</a>{% else %}<span class="chip sev-high">no</span>
-          {% if not console.me.email_listed %} Your sign-in email <code>{{ console.me.email }}</code> isn't in TVX_OPS_EMAILS.{% endif %}
+        <tr><td class="perm-name">Console access for you</td><td>{% if console.me.allowed %}<span class="chip good">yes</span> <a href="/admin">Open the console</a>. Your account ID for TVX_OPS_OBJECT_IDS is <code>{{ console.me.oid }}</code>.{% else %}<span class="chip sev-high">no</span>
+          {% if console.me.by_object_id %}{% if not console.me.oid_listed %} Your account ID <code>{{ console.me.oid }}</code> isn't in TVX_OPS_OBJECT_IDS.{% endif %}
+          {% elif not console.me.email_listed %} Your sign-in email <code>{{ console.me.email }}</code> isn't in TVX_OPS_EMAILS.{% endif %}
           {% if not console.me.tenant_matches %} TVX_OPS_TENANT_ID doesn't match the tenant you signed in from. Yours is <code>{{ console.me.tid }}</code>.{% endif %}{% endif %}</td></tr>
         {% endif %}
         <tr><td class="perm-name">TVX_SCHEDULER</td><td>{% if settings.scheduler %}<span class="chip good">on</span> automatic scans{% if scheduler_last %} · last check {{ scheduler_last.at|date }}, {{ scheduler_last.scans }} scan{{ 's' if scheduler_last.scans != 1 }}{% else %} · first check within a minute of starting{% endif %}{% else %}<span class="chip sev-medium">off</span> weekly and daily scans only run if <code>python -m app.cli scan-due</code> runs every hour. Set TVX_SCHEDULER=on to run them inside the app.{% endif %}</td></tr>
         <tr><td class="perm-name">Running version</td><td>{{ settings.version or 'unknown' }}</td></tr>
+        <tr><td class="perm-name">Your address</td><td><code>{{ your_ip }}</code> as this app sees it. It should be your own internet address, not the proxy's; if it isn't, see TVX_CLIENT_IP_HEADER in the deployment guide.</td></tr>
       </tbody>
     </table>
   </div>
@@ -66,10 +70,10 @@
       <tbody>{% for name, why in permissions %}<tr><td class="perm-name">{{ name }}</td><td>{{ why }}</td></tr>{% endfor %}</tbody>
     </table>
   </div>
-  <p>Optional, for one-click fixes: also add these <strong>delegated</strong> permissions. Don't grant admin consent for them; an admin approves each one only when they use a fix.</p>
+  <p><strong>Don't add the one-click fix permissions here.</strong> The app asks the customer's admin for each one at the moment of a fix. Anything listed in the app registration is approved for the customer's whole company the moment they connect, so write permissions must never be on this list. If you added these earlier, remove them:</p>
   <div class="card table-wrap">
     <table class="table">
-      <tbody>{% for name in fix_permissions %}<tr><td class="perm-name">{{ name }}</td><td>Delegated. Used only while an admin applies or undoes a one-click fix.</td></tr>{% endfor %}</tbody>
+      <tbody>{% for name in fix_permissions %}<tr><td class="perm-name">{{ name }}</td><td>Not in the app registration. Requested only while an admin applies or undoes a one-click fix.</td></tr>{% endfor %}</tbody>
     </table>
   </div>
   <ol start="6">
@@ -85,7 +89,9 @@
         <tr><td class="perm-name">TVX_BASE_URL</td><td>Public address of this site, for example https://health.example.com</td></tr>
         <tr><td class="perm-name">TVX_SESSION_SECRET</td><td>Long random string used to sign session cookies</td></tr>
         <tr><td class="perm-name">TVX_CONTACT_EMAIL / TVX_BOOKING_URL</td><td>Where "Ask Tenvaultix to fix this" buttons go</td></tr>
-        <tr><td class="perm-name">TVX_OPS_EMAILS + TVX_OPS_TENANT_ID</td><td>Optional. Comma-separated work emails of the Tenvaultix team who may open the Tenvaultix console at <code>/admin</code> (customers, licences, pricing, errors and backups), and the Directory (tenant) ID they sign in from. Both are needed.</td></tr>
+        <tr><td class="perm-name">TVX_OPS_EMAILS + TVX_OPS_TENANT_ID</td><td>Optional. Comma-separated work emails of the Tenvaultix team who may open the Tenvaultix console at <code>/admin</code> (customers, licences, pricing, errors and backups), and the Directory (tenant) ID they sign in from. Both are needed. Once the console is set up, this page is shown only to that team.</td></tr>
+        <tr><td class="perm-name">TVX_OPS_OBJECT_IDS</td><td>Recommended. The team's account object IDs (this page shows yours once you can open the console). When set, the console checks these instead of the emails.</td></tr>
+        <tr><td class="perm-name">TVX_DATABASE_URL</td><td>Optional. <code>postgresql://user:password@host:5432/dbname</code> to keep the data in PostgreSQL (Azure Database for PostgreSQL adds <code>?sslmode=require</code>). Without it, a SQLite file on this server is used.</td></tr>
       </tbody>
     </table>
   </div>

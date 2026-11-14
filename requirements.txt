@@ -7,6 +7,8 @@ msal==1.39.0
 requests==2.34.2
 dnspython==2.9.2
 PyYAML==6.0.3
+psycopg[binary]==3.3.9   # PostgreSQL, when TVX_DATABASE_URL is set
+psycopg-pool==3.3.3
 
 # tests
 pytest==9.2.0

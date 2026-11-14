@@ -46,7 +46,7 @@ def test_only_one_process_holds_the_lease(tmp_path):
     assert store.take_lease(scheduler.LEASE_KEY, "a", timedelta(minutes=30))
     assert scheduler.tick(store, collector(), owner="b") is None  # another process is scanning
     assert store.take_lease("job", "b", timedelta(seconds=-1)) is False
-    store.set_option("job", "a|2000-01-01T00:00:00+00:00")  # expired
+    assert store.take_lease("job", "a", timedelta(seconds=-1))  # a's lease runs out
     assert store.take_lease("job", "b", timedelta(minutes=30))
 
 

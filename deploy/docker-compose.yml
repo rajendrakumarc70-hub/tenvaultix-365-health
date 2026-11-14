@@ -1,9 +1,11 @@
 # Tenvaultix 365 Health Check on one Linux server: an Azure VM or a Hyper-V VM.
 # Settings live in deploy/.env (install.sh creates it from env.example). Then, from this folder:
 #   sudo docker compose up -d --build
-# COMPOSE_PROFILES in .env picks how the site is reached from the internet:
+# COMPOSE_PROFILES in .env picks the parts that run (comma-separated):
 #   caddy  - the server has a public IP (Azure VM): Caddy gets and renews the HTTPS certificate itself
 #   tunnel - the server is behind a router (Hyper-V in the office): Cloudflare Tunnel, no ports opened
+#   db     - PostgreSQL in a container on this server. Leave it out when TVX_DATABASE_URL points at Azure Database
+#            for PostgreSQL, or when TVX_DATABASE_URL is empty (a SQLite file, for small installs)
 name: tenvaultix
 
 services:
@@ -11,14 +13,35 @@ services:
     build: ..
     image: tenvaultix-365-health:local
     restart: unless-stopped
-    env_file: .env
+    # Only the app's own settings: the tunnel token and the database password stay with their own services.
     environment:
       TVX_BASE_URL: https://${TVX_DOMAIN}
+      TVX_ENV: ${TVX_ENV:-production}
       TVX_DB_PATH: /srv/data/health.db
+      TVX_DATABASE_URL: ${TVX_DATABASE_URL:-}
       TVX_SCHEDULER: "on"
       TVX_VERSION: ${TVX_VERSION:-}
+      TVX_CLIENT_ID: ${TVX_CLIENT_ID:-}
+      TVX_CLIENT_SECRET: ${TVX_CLIENT_SECRET:-}
+      TVX_CERT_PRIVATE_KEY: ${TVX_CERT_PRIVATE_KEY:-}
+      TVX_CERT_THUMBPRINT: ${TVX_CERT_THUMBPRINT:-}
+      TVX_SESSION_SECRET: ${TVX_SESSION_SECRET:-}
+      TVX_OPS_EMAILS: ${TVX_OPS_EMAILS:-}
+      TVX_OPS_TENANT_ID: ${TVX_OPS_TENANT_ID:-}
+      TVX_OPS_OBJECT_IDS: ${TVX_OPS_OBJECT_IDS:-}
+      TVX_CONTACT_EMAIL: ${TVX_CONTACT_EMAIL:-}
+      TVX_BOOKING_URL: ${TVX_BOOKING_URL:-}
+      TVX_EMERGENCY_STOP: ${TVX_EMERGENCY_STOP:-}
+      TVX_CLIENT_IP_HEADER: ${TVX_CLIENT_IP_HEADER:-}
+      TVX_SCAN_WORKERS: ${TVX_SCAN_WORKERS:-4}
+      TVX_KEEP_REPORTS_DAYS: ${TVX_KEEP_REPORTS_DAYS:-400}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
     volumes:
       - appdata:/srv/data
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
       interval: 30s
@@ -26,8 +49,25 @@ services:
       retries: 3
       start_period: 20s
 
+  db:
+    image: postgres:16-alpine
+    profiles: ["db"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tenvaultix
+      POSTGRES_USER: tenvaultix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tenvaultix -d tenvaultix"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    # No ports: only the app, on this compose network, can reach the database.
+
   caddy:
-    image: caddy:2.8
+    image: caddy:2.11
     profiles: ["caddy"]
     restart: unless-stopped
     ports:
@@ -43,7 +83,7 @@ services:
       - app
 
   tunnel:
-    image: cloudflare/cloudflared:2024.12.2
+    image: cloudflare/cloudflared:2026.10.7
     profiles: ["tunnel"]
     restart: unless-stopped
     command: tunnel --no-autoupdate run
@@ -53,6 +93,7 @@ services:
       - app
 
 volumes:
-  appdata:        # the database: keeps customers, licences and reports across restarts and updates
+  appdata:        # the SQLite file (when used) and the app's own files
+  pgdata:         # PostgreSQL's data: customers, licences and reports
   caddy_data:     # HTTPS certificates
   caddy_config:

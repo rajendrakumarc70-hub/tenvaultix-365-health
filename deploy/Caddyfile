@@ -2,5 +2,8 @@
 # TVX_DOMAIN comes from deploy/.env; its DNS A record must point at this server, with ports 80 and 443 open.
 {$TVX_DOMAIN} {
 	encode gzip
+	request_body {
+		max_size 5MB
+	}
 	reverse_proxy app:8000
 }

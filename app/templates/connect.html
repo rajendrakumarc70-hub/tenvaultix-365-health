@@ -39,7 +39,7 @@
         <p class="muted">Signed in as {{ user.email }}. Microsoft will show the list of permissions below and ask you to accept them for your organization. You need to be a <strong>Global Administrator</strong> (or Privileged Role Administrator).</p>
         <div class="btn-row">
           <a class="btn btn-primary" href="/connect/start">Approve read-only access</a>
-          <a class="btn btn-ghost" href="/logout">Use a different account</a>
+          <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-ghost" type="submit">Use a different account</button></form>
         </div>
         <p class="note section-gap">Not an admin? Send this page to your Microsoft 365 admin: <code>{{ settings.url('/connect') }}</code> <a href="#" data-copy="{{ settings.url('/connect') }}">Copy link</a></p>
       {% endif %}

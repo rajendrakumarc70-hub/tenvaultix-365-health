@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Sign out · Tenvaultix{% endblock %}
+{% block head %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+<div class="wrap">
+  <div class="message">
+    <div class="card">
+      <h1 class="h2">Sign out?</h1>
+      <p class="muted">Signed in as {{ user.email }}.</p>
+      <div class="btn-row">
+        <form method="post" action="/logout">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn btn-primary" type="submit">Sign out</button>
+        </form>
+        <form method="post" action="/logout/everywhere">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn btn-ghost" type="submit">Sign out on every device</button>
+        </form>
+      </div>
+      <p class="note section-gap">Use "every device" if you signed in on a shared or lost computer or phone.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

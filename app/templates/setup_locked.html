@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Setup guide · Tenvaultix 365 Health Check{% endblock %}
+{% block head %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+<section class="page-head on-dark">
+  <div class="wrap">
+    <span class="eyebrow">For the Tenvaultix team</span>
+    <h1>Setup guide</h1>
+    <p class="sub">This server is set up. Its details are shown to the Tenvaultix team only.</p>
+  </div>
+</section>
+<div class="wrap narrow prose">
+  {% if console.me %}
+  <div class="card table-wrap">
+    <table class="table">
+      <tbody>
+        <tr><td class="perm-name">Console access for you</td><td><span class="chip sev-high">no</span>
+          {% if console.me.by_object_id %}{% if not console.me.oid_listed %} Your account ID <code>{{ console.me.oid }}</code> isn't in TVX_OPS_OBJECT_IDS.{% endif %}
+          {% elif not console.me.email_listed %} Your sign-in email <code>{{ console.me.email }}</code> isn't in TVX_OPS_EMAILS.{% endif %}
+          {% if not console.me.tenant_matches %} TVX_OPS_TENANT_ID doesn't match the tenant you signed in from. Yours is <code>{{ console.me.tid }}</code>.{% endif %}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p><a class="btn btn-primary" href="/login?next=/setup">Sign in with Microsoft</a></p>
+  {% endif %}
+  <p class="muted small">Your address as this app sees it: <code>{{ your_ip }}</code></p>
+</div>
+{% endblock %}

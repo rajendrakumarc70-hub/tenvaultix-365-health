@@ -65,15 +65,32 @@ def can_scan(tenant: dict) -> bool:
     return licensing.state(tenant)["can_scan"]
 
 
-def scan_interval(store: Store, tenant: dict) -> timedelta:
-    plan = store.get_plan(tenant["plan"]) or store.get_plan("trial") or {}
+def scan_interval(store: Store, tenant: dict, plans: dict | None = None) -> timedelta:
+    """How often the company's plan scans. `plans` (id -> plan) saves a lookup per company when checking many."""
+    if plans is not None:
+        plan = plans.get(tenant["plan"]) or plans.get("trial") or {}
+    else:
+        plan = store.get_plan(tenant["plan"]) or store.get_plan("trial") or {}
     return timedelta(days=plan.get("scan_days") or 7)
 
 
-def scan_due(store: Store, tenant: dict) -> bool:
-    if not can_scan(tenant) or store.running_scan(tenant["id"]):
+RETRY_FAILED_AFTER = timedelta(hours=6)  # a company whose scan failed isn't retried every 15 minutes
+
+
+def scan_due(store: Store, tenant: dict, times: dict | None = None, plans: dict | None = None) -> bool:
+    """Whether the company's next automatic scan is due. `times` is its row from store.scan_times(); the scheduler
+    passes it so checking thousands of companies takes one query, not one report load each."""
+    if not can_scan(tenant):
         return False
-    last = store.latest_scan(tenant["id"])
-    if not last:
+    if times is None:
+        times = store.scan_times(tenant["id"]).get(tenant["id"], {})
+    now = utcnow()
+    if times.get("running_since") and store.running_scan(tenant["id"]):  # also clears a scan stuck after a restart
+        return False
+    last_done, last_failed = times.get("last_done"), times.get("last_failed")
+    if last_failed and (not last_done or last_failed > last_done) \
+            and now - datetime.fromisoformat(last_failed) < RETRY_FAILED_AFTER:
+        return False
+    if not last_done:
         return True
-    return utcnow() - datetime.fromisoformat(last["started_at"]) >= scan_interval(store, tenant) - timedelta(hours=1)
+    return now - datetime.fromisoformat(last_done) >= scan_interval(store, tenant, plans) - timedelta(hours=1)

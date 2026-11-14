@@ -42,5 +42,24 @@
       </div>
     </div>
   </section>
+  <section class="report-section">
+    <div class="card">
+      <h2 class="h3">Remove the permission you approved</h2>
+      <p>We used <code>{{ fix.permission }}</code> once and kept nothing, but Microsoft remembers your approval until you remove it. Removing it means nobody, us included, can use it again without asking you. (You'll approve it again if you undo this change or use another fix.)</p>
+      <ol class="fix-steps">
+        <li>If you ticked <em>Consent on behalf of your organization</em>: Microsoft Entra admin center &gt; Entra ID &gt; Enterprise apps &gt; Tenvaultix 365 Health Check &gt; Permissions &gt; <strong>Admin consent</strong> tab &gt; <code>{{ fix.permission }}</code> &gt; <strong>&hellip;</strong> &gt; <strong>Revoke permission</strong>.</li>
+        <li>If you didn't, it's on the <strong>User consent</strong> tab, which the portal can't change. Run this in PowerShell (it removes only our write permissions and keeps sign-in working):
+          <pre class="code-block">{% set script %}Connect-MgGraph -Scopes "DelegatedPermissionGrant.ReadWrite.All","Application.Read.All"
+$sp = Get-MgServicePrincipal -Filter "appId eq '{{ settings.client_id }}'"
+Get-MgOauth2PermissionGrant -Filter "clientId eq '$($sp.Id)'" -All | ForEach-Object {
+  $keep = ($_.Scope -split ' ' | Where-Object { $_ -and $_ -notlike '*ReadWrite*' }) -join ' '
+  if ($keep) { Update-MgOauth2PermissionGrant -OAuth2PermissionGrantId $_.Id -Scope $keep }
+  else { Remove-MgOauth2PermissionGrant -OAuth2PermissionGrantId $_.Id }
+}{% endset %}{{ script }}</pre>
+          <a href="#" data-copy="{{ script }}">Copy the script</a>
+        </li>
+      </ol>
+    </div>
+  </section>
 </div>
 {% endblock %}

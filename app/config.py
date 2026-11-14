@@ -56,6 +56,11 @@ class Settings:
     scheduler: bool = False  # TVX_SCHEDULER=on: run due scans automatically inside the web app
     emergency_stop: bool = False  # TVX_EMERGENCY_STOP=on: stop all use of Microsoft access (see safety.py)
     ops_tenant_id: str = ""  # the Tenvaultix tenant those people sign in from (TVX_OPS_TENANT_ID); both are required
+    ops_object_ids: tuple[str, ...] = ()  # TVX_OPS_OBJECT_IDS: if set, the console checks these account IDs, not emails
+    database_url: str = ""  # TVX_DATABASE_URL=postgresql://...: PostgreSQL instead of the SQLite file
+    client_ip_header: str = ""  # TVX_CLIENT_IP_HEADER, e.g. CF-Connecting-IP: only behind a proxy that always sets it
+    scan_workers: int = 4  # TVX_SCAN_WORKERS: how many companies the scheduler scans at the same time
+    keep_reports_days: int = 400  # TVX_KEEP_REPORTS_DAYS: delete older reports (each company's latest is kept); 0 = keep
 
     @property
     def has_certificate(self) -> bool:
@@ -75,6 +80,26 @@ class Settings:
 
     def url(self, path: str) -> str:
         return self.base_url.rstrip("/") + path
+
+    @property
+    def database(self) -> str | Path:
+        """Where the data lives: the PostgreSQL URL when one is set, else the SQLite file."""
+        return self.database_url or self.database_path
+
+    @property
+    def console_configured(self) -> bool:
+        return bool(self.ops_tenant_id and (self.ops_emails or self.ops_object_ids))
+
+
+def _number(name: str, default: int, low: int, high: int) -> int:
+    value = _env(name)
+    if not value:
+        return default
+    try:
+        return max(low, min(high, int(value)))
+    except ValueError:
+        log.warning("%s should be a whole number; using %s", name, default)
+        return default
 
 
 def load_settings() -> Settings:
@@ -109,6 +134,13 @@ def load_settings() -> Settings:
         ops_emails=tuple(e.strip(" '\"").lower() for e in _env("TVX_OPS_EMAILS").replace(";", ",").split(",")
                          if e.strip(" '\"")),
         ops_tenant_id=_env("TVX_OPS_TENANT_ID").strip(" '\"").lower(),
+        ops_object_ids=tuple(i.strip(" '\"").lower() for i in _env("TVX_OPS_OBJECT_IDS").replace(";", ",").split(",")
+                             if i.strip(" '\"")),
         scheduler=_env("TVX_SCHEDULER").lower() in ("on", "1", "true", "yes"),
         emergency_stop=_env("TVX_EMERGENCY_STOP").lower() in ("on", "1", "true", "yes"),
+        database_url=_env("TVX_DATABASE_URL") or _env("DATABASE_URL"),
+        # Render serves sites through Cloudflare, which sets this header to the visitor's own address.
+        client_ip_header=_env("TVX_CLIENT_IP_HEADER") or ("CF-Connecting-IP" if _env("RENDER") else ""),
+        scan_workers=_number("TVX_SCAN_WORKERS", 4, 1, 32),
+        keep_reports_days=_number("TVX_KEEP_REPORTS_DAYS", 400, 0, 100_000),
     )

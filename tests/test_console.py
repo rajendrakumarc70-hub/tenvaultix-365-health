@@ -337,8 +337,8 @@ def test_setup_page_explains_console_access(tmp_path):
 
 def test_console_settings_tolerate_quotes_and_spaces(monkeypatch):
     from app.config import load_settings
-    monkeypatch.setenv("TVX_OPS_EMAILS", ' "Rajendra@Tenvaultix.com" ; ops@tenvaultix.com ')
+    monkeypatch.setenv("TVX_OPS_EMAILS", ' "Founder@Tenvaultix.example" ; ops@tenvaultix.example ')
     monkeypatch.setenv("TVX_OPS_TENANT_ID", " 'ABCDEF01-2345-6789-ABCD-EF0123456789' ")
     settings = load_settings()
-    assert settings.ops_emails == ("rajendra@tenvaultix.com", "ops@tenvaultix.com")
+    assert settings.ops_emails == ("founder@tenvaultix.example", "ops@tenvaultix.example")
     assert settings.ops_tenant_id == "abcdef01-2345-6789-abcd-ef0123456789"

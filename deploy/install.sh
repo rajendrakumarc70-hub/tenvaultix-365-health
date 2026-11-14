@@ -5,7 +5,8 @@
 #   bash install.sh
 #
 # It installs Docker and git, downloads the app to /opt/tenvaultix, creates deploy/.env with a random session
-# secret, and adds a daily database backup. It doesn't start the app: fill in deploy/.env first.
+# secret and a random database password, and adds a daily database backup. It doesn't start the app: fill in
+# deploy/.env first.
 set -euo pipefail
 
 REPO="${TVX_REPO:-https://github.com/rajendrakumarc70-hub/tenvaultix-365-health.git}"
@@ -27,8 +28,11 @@ cd "$DIR/deploy"
 if [ ! -f .env ]; then
   echo "==> Creating $DIR/deploy/.env"
   secret="$(openssl rand -base64 48 | tr -d '\n/+=')"
+  dbpass="$(openssl rand -hex 24)"
   sudo cp env.example .env
   sudo sed -i "s|^TVX_SESSION_SECRET=.*|TVX_SESSION_SECRET=${secret}|" .env
+  sudo sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${dbpass}|" .env
+  sudo sed -i "s|^TVX_DATABASE_URL=.*|TVX_DATABASE_URL=postgresql://tenvaultix:${dbpass}@db:5432/tenvaultix|" .env
   sudo chmod 600 .env
 fi
 sudo chmod +x install.sh update.sh backup.sh

@@ -13,6 +13,7 @@ interface Env {
 	TVX_CERT_THUMBPRINT?: string;
 	TVX_CONTACT_EMAIL?: string;
 	TVX_BOOKING_URL?: string;
+	TVX_CLIENT_IP_HEADER?: string;
 }
 
 // Worker variables and secrets passed through to the app. Unset ones are left out so the app's defaults apply.
@@ -25,6 +26,7 @@ const PASS_THROUGH = [
 	"TVX_CERT_THUMBPRINT",
 	"TVX_CONTACT_EMAIL",
 	"TVX_BOOKING_URL",
+	"TVX_CLIENT_IP_HEADER",
 ] as const;
 
 export class HealthApp extends Container<Env> {

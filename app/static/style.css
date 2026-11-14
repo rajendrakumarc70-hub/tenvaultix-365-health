@@ -66,6 +66,13 @@ code, .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; f
 .nav a { color: #c7d6ee; font-size: .95rem; }
 .nav a:hover { color: #fff; text-decoration: none; }
 .nav .btn { color: #fff; }
+.nav-form { display: inline; margin: 0; }
+.link-button { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.nav .link-button { color: #c7d6ee; font-size: .95rem; }
+.nav .link-button:hover { color: #fff; }
+.console-me .link-button { color: #9db4d6; text-align: left; }
+.console-me .link-button:hover { color: #fff; text-decoration: underline; }
+.code-block { background: #0b1b2e; color: #dbe7f7; padding: 12px 14px; border-radius: 8px; overflow-x: auto; font-size: .8rem; line-height: 1.5; white-space: pre; margin: 10px 0 6px; }
 .site-footer { background: var(--navy-950); color: #9db4d6; padding: 36px 0; margin-top: 72px; font-size: .9rem; }
 .site-footer .wrap { display: flex; flex-wrap: wrap; gap: 16px 32px; justify-content: space-between; }
 .site-footer a { color: #c7d6ee; }
@@ -479,6 +486,7 @@ input:focus-visible, .btn:focus-visible, summary:focus-visible, a:focus-visible 
 }
 @media (max-width: 640px) {
   .nav a:not(.btn) { display: none; }
+  .nav .nav-form { display: none; }
   .plans, .cats, .grid-2, .grid-3, .grid-4, .changes { grid-template-columns: 1fr; }
   .band { grid-template-columns: 1fr; }
   .finding > summary { grid-template-columns: 26px minmax(0, 1fr); }

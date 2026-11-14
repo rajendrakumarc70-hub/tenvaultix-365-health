@@ -45,7 +45,8 @@ what you sent and when.
 Change everything the attacker could have seen:
 
 - [ ] The app's Microsoft credential: create a new certificate (preferred) or secret, put it in `deploy/.env`.
-- [ ] `TVX_SESSION_SECRET`: a new random value signs everyone out, including the attacker.
+- [ ] Sign everyone out, including the attacker: `cd /opt/tenvaultix/deploy && sudo docker compose exec app python -m
+      app.cli sign-out-everyone`. A new random `TVX_SESSION_SECRET` does the same and also stops old cookies.
 - [ ] Passwords and MFA for the Microsoft admin, GitHub and Azure accounts; remove sessions and app passwords
       you don't recognise; check who owns the app registration.
 - [ ] GitHub: check recent commits and repository settings; revoke personal access tokens and deploy keys.

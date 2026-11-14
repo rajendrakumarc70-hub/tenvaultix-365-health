@@ -26,12 +26,12 @@
       <div>
         <h3>How it works</h3>
         <ol class="fix-steps">
-          <li>Microsoft asks you to sign in and approve one permission, <code>{{ fix.permission }}</code>. Your account needs the {{ fix.roles }} role.</li>
+          <li>Microsoft asks you to sign in and approve one permission, <code>{{ fix.permission }}</code>. Your account needs the {{ fix.roles }} role. Leave <em>Consent on behalf of your organization</em> unticked, so the permission is only for you.</li>
           <li>We make this one change with your own admin rights, then read the setting back to check it worked.</li>
           <li>We record what changed, by whom and when. You can undo it on the next page or from your dashboard.</li>
         </ol>
       </div>
-      <p class="note">We don't keep your sign-in after the change, and scanning stays read-only.</p>
+      <p class="note">We use your approval for this one change and don't keep your sign-in. Microsoft does remember that you approved the permission; the next page shows how to remove it. Scanning stays read-only.</p>
       <form method="post" action="/app/fix/{{ fix.check_id }}" class="btn-row">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <button class="btn btn-primary" type="submit">Continue with Microsoft</button>

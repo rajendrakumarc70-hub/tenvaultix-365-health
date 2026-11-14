@@ -6,6 +6,11 @@
   python -m app.cli set-plan <tenant-id> <plan>   # a plan id from the console's Pricing page
   python -m app.cli backup <file>            # a safe copy of the whole database ("-" writes it to stdout)
   python -m app.cli restore <file> --yes     # replace the whole database with a backup ("-" reads stdin)
+  python -m app.cli sign-out-everyone        # end every sign-in session now (for an incident)
+  python -m app.cli prune                    # delete reports older than TVX_KEEP_REPORTS_DAYS now
+
+Backups are always a SQLite file, from SQLite or PostgreSQL alike. To move an existing SQLite database into
+PostgreSQL, set TVX_DATABASE_URL and run `restore` with the SQLite file (a backup, or the old health.db itself).
 """
 from __future__ import annotations
 
@@ -15,6 +20,8 @@ import sys
 
 from .collector import collect
 from .config import load_settings
+from datetime import timedelta
+
 from .db import Store
 from .dnscheck import SystemResolver
 from .graph import GraphClient, app_token_provider
@@ -37,11 +44,13 @@ def main(argv: list[str] | None = None) -> int:
     restore = sub.add_parser("restore", help="replace the whole database with a backup")
     restore.add_argument("source", help="backup file, or - for standard input")
     restore.add_argument("--yes", action="store_true", help="confirm: everything now in the database is replaced")
+    sub.add_parser("sign-out-everyone", help="end every sign-in session")
+    sub.add_parser("prune", help="delete reports older than TVX_KEEP_REPORTS_DAYS (each company's latest is kept)")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     settings = load_settings()
-    store = Store(settings.database_path)
+    store = Store(settings.database)
 
     def collect_tenant(tenant_id: str) -> dict:
         return collect(GraphClient(app_token_provider(settings, tenant_id)), SystemResolver(), tenant_id)
@@ -66,11 +75,25 @@ def main(argv: list[str] | None = None) -> int:
             print("This replaces everything in the database. Add --yes to go ahead.", file=sys.stderr)
             return 1
         try:
-            store.restore_from(sys.stdin.buffer if args.source == "-" else args.source)
+            counts = store.restore_from(sys.stdin.buffer if args.source == "-" else args.source)
         except ValueError as exc:
             print(f"Nothing was restored: {exc}", file=sys.stderr)
             return 1
-        print("Database restored.", file=sys.stderr)
+        detail = f" into {store.engine}: " + ", ".join(f"{n} {t}" for t, n in counts.items()) if counts else ""
+        print(f"Database restored{detail}. Everyone will need to sign in again.", file=sys.stderr)
+        return 0
+
+    if args.command == "sign-out-everyone":
+        ended = store.end_all_sessions()
+        print(f"Ended {ended} sign-in session{'s' if ended != 1 else ''}. Everyone must sign in again.")
+        return 0
+
+    if args.command == "prune":
+        if not settings.keep_reports_days:
+            print("TVX_KEEP_REPORTS_DAYS is 0, so reports are kept forever.")
+            return 0
+        deleted = store.prune_scans(timedelta(days=settings.keep_reports_days))
+        print(f"Deleted {deleted} report{'s' if deleted != 1 else ''} older than {settings.keep_reports_days} days.")
         return 0
 
     if args.command == "set-plan":
@@ -101,8 +124,9 @@ def main(argv: list[str] | None = None) -> int:
         print("The emergency stop is on, so no scans run. Turn it off in the console (Security).", file=sys.stderr)
         return 0
     failures = 0
+    times = store.scan_times()
     for tenant in store.list_tenants():
-        if scan_due(store, tenant):
+        if scan_due(store, tenant, times.get(tenant["id"], {})):
             scan = store.get_scan(run_scan(store, tenant["id"], collect_tenant))
             failures += scan["status"] != "done"
     return 1 if failures else 0

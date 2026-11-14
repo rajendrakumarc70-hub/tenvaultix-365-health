@@ -34,7 +34,7 @@ tenant, a scan every week (or every day on higher plans).
 | Tenvaultix console | `app/console.py`, `app/licensing.py`, `app/templates/console/` | `/admin`, for the Tenvaultix team only (`TVX_OPS_EMAILS` signed in from `TVX_OPS_TENANT_ID`), with its own sidebar layout. **Overview**: monthly revenue, customers, trials, and a *needs attention* list (licences ending, ended or suspended, trials ending, more staff than seats, failed scans). **Customers**: search and filters, CSV export, and a record per company with its licence (plan, valid until, seats, agreed price, monthly/yearly, active/suspended, quick *extend 1 month / 1 year*), contact and billing details (GSTIN, address, notes) and a licence history of who changed what. Customers can be added from their domain **before** they connect; the licence then applies instead of a free trial. **Pricing**: edit every plan's rupee and dollar price, user limit, scan frequency, features, order and visibility, add or delete plans and set the trial length; the public pricing section reads from here. **Backup**: download and restore plans, customers and licences as JSON (needed while the host's disk is temporary). An ended or suspended licence pauses new scans; reports stay. |
 | Office blueprint | `app/blueprint.py` + `app/templates/_blueprint.html` | The top of every report: the tenant drawn as an office floor plan an inspector has marked up. Front door = sign-in and MFA, master keys = admins, mailroom = email seals, file room = sharing, one desk per paid license, reception = guests, equipment room = devices. Numbered red marks link to the fix. Fonts are self-hosted under the SIL Open Font License (`app/static/fonts/`). |
 | Web app | `app/web.py`, `app/templates/` | Home page with pricing, free check, sample report, sign-in, connect flow, dashboard, report, team access, disconnect. |
-| Storage | `app/db.py` | SQLite: tenants, team members, scan findings. Disconnecting deletes everything for that tenant. |
+| Storage | `app/db.py` | SQLite (one file, for development and small installs) or PostgreSQL (`TVX_DATABASE_URL`, for many customers and several app servers), with the same code: tenants, team members, scan findings, console records, sign-in sessions. Disconnecting deletes everything for that tenant. |
 | Scheduler CLI | `app/cli.py` | `scan-due` (run hourly), `scan`, `list`, `set-plan` (recorded in the licence history). |
 | Sample tenant | `app/demo.py` | "Acme Diagnostics", a made-up company that runs through the real checks for the public sample report. |
 
@@ -180,7 +180,7 @@ Settings: public values go in `vars` in `wrangler.jsonc` (`TVX_BASE_URL`, `TVX_C
 
 **Before real customers:** the container's disk is temporary. It's reset when the container sleeps after 30
 idle minutes or is redeployed, which is fine for a demo but would lose connected tenants and reports. Move the
-database to persistent storage (for example Cloudflare D1, or PostgreSQL) and set a fixed
+database to PostgreSQL (set `TVX_DATABASE_URL`, for example to Azure Database for PostgreSQL) and set a fixed
 `TVX_SESSION_SECRET` before going live. Scheduled scans (`python -m app.cli scan-due`) also need a trigger,
 for example a Cron Trigger on the Worker.
 
@@ -198,16 +198,30 @@ sudo nano /opt/tenvaultix/deploy/.env            # domain, Microsoft app values,
 sudo bash /opt/tenvaultix/deploy/update.sh       # build and start; run again to update
 ```
 
-**Azure App Service / Container Apps:** not yet. Their storage is a network share, which Microsoft says can't
-hold a SQLite database; the app needs PostgreSQL support first. Use an Azure VM until then.
+**Database:** the server kit runs PostgreSQL in a container next to the app (`COMPOSE_PROFILES=caddy,db`).
+For more customers, or to let Microsoft handle backups and patching, use **Azure Database for PostgreSQL**:
+set `TVX_DATABASE_URL=postgresql://USER:PASSWORD@SERVER.postgres.database.azure.com:5432/tenvaultix?sslmode=require`
+and remove `db` from `COMPOSE_PROFILES`. Without `TVX_DATABASE_URL` the app keeps a single SQLite file, which
+is fine for development and a handful of customers. To move existing data from SQLite into PostgreSQL, set
+`TVX_DATABASE_URL` and run `python -m app.cli restore <the SQLite file> --yes`.
+
+**Many customers:** the scheduler scans `TVX_SCAN_WORKERS` companies at once (default 4), waits 6 hours before
+retrying a company whose scan failed, and deletes reports older than `TVX_KEEP_REPORTS_DAYS` (default 400; each
+company's latest is always kept). `WEB_CONCURRENCY` sets the number of app processes (2 in the server kit). With
+PostgreSQL, several app servers can share one database: sign-ins and the scheduler's lease live in the database.
+Tested with 2,000 companies and 30,000 reports: every page's database work takes under 40 ms.
+
+**Azure App Service / Container Apps:** possible with PostgreSQL (`TVX_DATABASE_URL`), since nothing needs the
+local disk any more. The server kit (Azure VM) is still the documented route.
 
 **Scheduled scans:** `TVX_SCHEDULER=on` runs them inside the web app (the server setup turns it on). Without
 it, run `python -m app.cli scan-due` every hour from cron. Either way, each company is scanned when its plan's
 interval has passed (weekly on the trial and Essentials, daily on Business and Partner, as set on the console's
 Pricing page); ended or suspended licences are skipped.
 
-**Database backup:** `python -m app.cli backup <file>` makes a safe copy while the app runs
-(`deploy/backup.sh` uses it). Plans and licences are changed in the console (`/admin`); from the command line:
+**Database backup:** `python -m app.cli backup <file>` makes a safe copy while the app runs, as a SQLite
+file from either database (`deploy/backup.sh` uses it). With Azure Database for PostgreSQL, Azure's own
+automatic backups are the main safety net. Plans and licences are changed in the console (`/admin`); from the command line:
 
 ```bash
 python -m app.cli list
@@ -228,9 +242,11 @@ python -m app.cli set-plan <tenant-id> business
 ## Security notes
 
 - Scanning uses read-only Graph application permissions and can't change anything in a customer tenant.
-- One-click fixes are separate and optional: delegated permissions an admin approves when they use a fix, used
-  for that one change with the admin's own rights, from a throwaway token cache. Every change is recorded and can
-  be undone. Fixes that could lock people out (MFA policies, removing admins) are deliberately not offered.
+- One-click fixes are separate and optional: delegated permissions requested only when an admin uses a fix
+  (never listed in the app registration, which every connecting customer approves in full), used for that one
+  change with the admin's own rights, from a throwaway token cache and without `offline_access`. Every change is
+  recorded and can be undone, and the result page shows how to remove the approval. Fixes that could lock people
+  out (MFA policies, removing admins) are deliberately not offered.
 - No customer passwords are ever seen. Our own credential is a certificate or secret in our tenant, so
   protect it (Key Vault, rotation). Anyone holding it can read every connected tenant.
 - Only findings are stored (including names and emails of the accounts a finding is about); raw directory
@@ -244,8 +260,13 @@ python -m app.cli set-plan <tenant-id> business
   Microsoft access. Plan for incidents: [docs/INCIDENT_RESPONSE.md](docs/INCIDENT_RESPONSE.md); how to report a
   vulnerability: [SECURITY.md](SECURITY.md).
 - HTTPS sites send HSTS, so browsers refuse plain HTTP for a year.
-- Sessions are signed cookies (8 hours, `SameSite=Lax`, `Secure` on HTTPS). Every form has a CSRF token,
-  responses carry a strict Content-Security-Policy, and the free domain check is rate-limited per IP.
+- Sessions are signed cookies (`SameSite=Lax`, `Secure` on HTTPS) tied to a session row in the database: 8 hours,
+  ended on the server by Sign out (a form, not a link), "Sign out on every device" or `app.cli
+  sign-out-everyone`. The console asks for a fresh sign-in every hour. Every form has a CSRF token, responses carry
+  a strict Content-Security-Policy, requests over 5 MB are refused, and the free domain check is rate-limited per
+  visitor address (`X-Forwarded-For` is trusted only from a proxy on a private network, read from the right;
+  `TVX_CLIENT_IP_HEADER` names a header the proxy always sets, such as Cloudflare's `CF-Connecting-IP`).
+- The Microsoft client sends its token only to `graph.microsoft.com` and `management.azure.com`.
 - Have the privacy page (`app/templates/privacy.html`) reviewed for DPDP (India), GDPR (UK/EU) and the
   other markets you sell in before launch.
 

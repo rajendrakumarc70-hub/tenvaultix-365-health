@@ -13,6 +13,7 @@ import logging
 import threading
 import time
 from typing import Callable, Iterator
+from urllib.parse import urlsplit
 
 import msal
 import requests
@@ -23,6 +24,8 @@ log = logging.getLogger(__name__)
 
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0"
 RETRY_STATUSES = {429, 500, 502, 503, 504}
+# The only places a token is ever sent. A "next page" link pointing anywhere else is refused.
+TOKEN_HOSTS = {"graph.microsoft.com", "management.azure.com"}
 
 
 class GraphError(Exception):
@@ -111,6 +114,8 @@ class GraphClient:
                  body: dict | None = None) -> requests.Response:
         if not url.startswith("https://"):
             url = self._root + url
+        elif urlsplit(url).hostname not in TOKEN_HOSTS:
+            raise GraphError(502, "unexpectedHost", f"Refused to send the app's token to {urlsplit(url).hostname}.")
         for attempt in range(self._max_retries + 1):
             resp = self._session().request(
                 method,

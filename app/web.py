@@ -4,6 +4,7 @@ create_app() takes its dependencies as arguments so tests can pass fakes; app/ma
 """
 from __future__ import annotations
 
+import ipaddress
 import logging
 import re
 import secrets
@@ -19,7 +20,9 @@ from fastapi import BackgroundTasks, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.responses import PlainTextResponse
 
 from . import azure_costs, blueprint, demo, fixes, licensing, problems, safety, scheduler
 from .auth import LoginError, MicrosoftAuth, consent_error_message, is_consent_admin
@@ -41,6 +44,10 @@ MANUAL_SCAN_GAP = timedelta(minutes=5)
 MAX_MEMBERS = 25
 EMAIL_RE = re.compile(r"^[^@\s]+@[a-z0-9.-]+\.[a-z]{2,}$", re.I)
 HSTS = "max-age=31536000; includeSubDomains"  # browsers then refuse plain HTTP for this site for a year
+SESSION_HOURS = 8  # a sign-in lasts this long; Sign out ends it on the server at once
+MAX_BODY = 5 * 1024 * 1024  # biggest request accepted (a console backup is at most 2 MB)
+SIGNED_IN_KEYS = ("user", "sid", "signed_in_at", "console_seen", "console_denied", "pending_tenant", "connect_tries",
+                  "consent_state", "fix_pending", "fix_flow", "next")
 SECURITY_HEADERS = {
     "Content-Security-Policy": ("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
                                 "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"),
@@ -49,6 +56,41 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 }
+
+
+class BodyLimit:
+    """Refuse requests bigger than `limit` bytes before anything reads them, so nobody can fill memory or disk."""
+
+    def __init__(self, app, limit: int):
+        self.app, self.limit = app, limit
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        length = dict(scope.get("headers") or []).get(b"content-length", b"")
+        if length.isdigit() and int(length) > self.limit:
+            return await PlainTextResponse("Request too large.", status_code=413)(scope, receive, send)
+        if length or scope.get("method") not in ("POST", "PUT", "PATCH"):
+            return await self.app(scope, receive, send)  # the server checks the body matches its declared length
+        body, more = bytearray(), True  # no Content-Length (chunked): read it here, up to the limit
+        while more:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            body += message.get("body", b"")
+            more = message.get("more_body", False)
+            if len(body) > self.limit:
+                return await PlainTextResponse("Request too large.", status_code=413)(scope, receive, send)
+        replayed = False
+
+        async def replay():
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                return {"type": "http.request", "body": bytes(body), "more_body": False}
+            return await receive()
+
+        return await self.app(scope, replay, send)
 
 
 class RateLimiter:
@@ -90,7 +132,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
                arm_factory: Callable[[str], GraphClient] | None = None,
                app_roles: Callable[[str], list[str]] | None = None) -> FastAPI:
     settings = settings or load_settings()
-    store = store or Store(settings.database_path)
+    store = store or Store(settings.database)
     resolver = resolver or SystemResolver()
     auth = auth or MicrosoftAuth(settings)
     if graph_factory is None:
@@ -119,11 +161,26 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         if settings.scheduler:
-            scheduler.start(store, collect_tenant, paused=lambda: stopped() is not None)
+            scheduler.start(store, collect_tenant, paused=lambda: stopped() is not None,
+                            workers=settings.scan_workers, keep_reports=settings.keep_reports_days)
         yield
 
     app = FastAPI(title="Tenvaultix 365 Health Check", docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)
+
+    @app.middleware("http")
+    async def live_sessions_only(request: Request, call_next):
+        """A sign-in counts only while its session row exists, so Sign out (or "sign out everywhere") also stops a
+        copied cookie. Runs inside SessionMiddleware, which is added after it."""
+        session = request.scope.get("session")
+        if session and session.get("user") and not request.url.path.startswith("/static/"):
+            user = session["user"]
+            live = await run_in_threadpool(store.check_session, session.get("sid"))
+            if not live or live["user_oid"] != user.get("oid") or live["tenant_id"] != user.get("tid"):
+                for key in SIGNED_IN_KEYS:
+                    session.pop(key, None)
+        return await call_next(request)
+
     app.add_middleware(SessionMiddleware, secret_key=settings.session_secret, session_cookie="tvx_session",
                        max_age=8 * 3600, same_site="lax", https_only=settings.https_only)
     app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
@@ -152,9 +209,23 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
     async def security_headers(request: Request, call_next):
         response = await call_next(request)
         add_security_headers(response)
-        if request.url.path.startswith(("/app", "/admin")):
+        if request.url.path.startswith(("/app", "/admin", "/setup", "/logout")):
             response.headers["Cache-Control"] = "no-store"
         return response
+
+    app.add_middleware(BodyLimit, limit=MAX_BODY)  # outermost: before anything reads the body
+
+    def client_ip(request: Request) -> str:
+        """The visitor's address. Uvicorn takes it from X-Forwarded-For only when the proxy in front is on a
+        trusted (private) network, reading from the right; TVX_CLIENT_IP_HEADER names a header the proxy always
+        sets itself (Cloudflare's CF-Connecting-IP), never one a visitor could send past it."""
+        if settings.client_ip_header:
+            value = request.headers.get(settings.client_ip_header, "").split(",")[0].strip()
+            try:
+                return str(ipaddress.ip_address(value))
+            except ValueError:
+                pass
+        return request.client.host if request.client else "unknown"
 
     @app.exception_handler(Exception)
     async def crashed(request: Request, exc: Exception):
@@ -193,11 +264,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
             log.exception("Couldn't record problem %s", code)
 
     def is_ops(user: dict | None) -> bool:
-        # Email alone isn't enough to trust (Microsoft advises against authorizing on it), so the person must also
-        # sign in from the Tenvaultix tenant.
-        return bool(user and settings.ops_emails and settings.ops_tenant_id
-                    and user["tid"].lower() == settings.ops_tenant_id
-                    and user["email"].lower() in settings.ops_emails)
+        # The person must sign in from the Tenvaultix tenant. With TVX_OPS_OBJECT_IDS set, their account's permanent
+        # object ID decides (Microsoft's advice: an email can be renamed onto another account); otherwise the email.
+        if not (user and settings.ops_tenant_id and user["tid"].lower() == settings.ops_tenant_id):
+            return False
+        if settings.ops_object_ids:
+            return user["oid"].lower() in settings.ops_object_ids
+        return bool(settings.ops_emails) and user["email"].lower() in settings.ops_emails
 
     def flash(request: Request, text: str, kind: str = "info") -> None:
         request.session.setdefault("flash", []).append({"kind": kind, "text": text})
@@ -250,8 +323,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
             return render(request, "index.html", status_code=400, domain_value=domain, preview=demo_preview(),
                           pricing=store.list_plans(public_only=True), trial_days=store.trial_days(),
                           domain_error="That doesn't look like a domain. Try something like yourcompany.com.")
-        client = request.client.host if request.client else "unknown"
-        if not domain_limiter.allow(client):
+        if not domain_limiter.allow(client_ip(request)):
             return message(request, "Slow down a little",
                            "You've run a lot of checks in the last hour. Please try again later.", status_code=429)
         report = check_domain(name, resolver, tenant_lookup=tenant_lookup)
@@ -282,20 +354,27 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
 
     @app.get("/setup")
     def setup(request: Request):
+        user = request.session.get("user")
+        if settings.console_configured and not is_ops(user):
+            # Once the console is set up, how this server is configured is for the Tenvaultix team only.
+            return render(request, "setup_locked.html", console=console_check(user), your_ip=client_ip(request))
         recent = problems.grouped(store.list_problems(limit=50, server_only=True))
         return render(request, "setup.html", permissions=GRAPH_PERMISSIONS, fix_permissions=fixes.FIX_PERMISSIONS,
-                      recent_problems=recent[:6], console=console_check(request.session.get("user")),
-                      scheduler_last=scheduler.last_run(store))
+                      recent_problems=recent[:6], console=console_check(user), your_ip=client_ip(request),
+                      scheduler_last=scheduler.last_run(store), database=store.engine)
 
     def console_check(user: dict | None) -> dict:
         """Whether the console settings are in place and, for the person signed in, whether they match.
-        Shows only the signed-in person's own email and tenant, never the configured values."""
-        check = {"emails": len(settings.ops_emails), "tenant_set": bool(settings.ops_tenant_id),
+        Shows only the signed-in person's own email, tenant and account ID, never the configured values."""
+        check = {"emails": len(settings.ops_emails), "object_ids": len(settings.ops_object_ids),
+                 "tenant_set": bool(settings.ops_tenant_id),
                  "tenant_looks_right": bool(re.fullmatch(r"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}",
                                                          settings.ops_tenant_id))}
         if user:
-            check["me"] = {"email": user["email"], "tid": user["tid"],
+            check["me"] = {"email": user["email"], "tid": user["tid"], "oid": user["oid"],
                            "email_listed": user["email"].lower() in settings.ops_emails,
+                           "oid_listed": user["oid"].lower() in settings.ops_object_ids,
+                           "by_object_id": bool(settings.ops_object_ids),
                            "tenant_matches": user["tid"].lower() == settings.ops_tenant_id,
                            "allowed": is_ops(user)}
         return check
@@ -322,7 +401,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         if fix_flow and params.get("state") and secrets.compare_digest(params["state"], fix_flow.get("state", "")):
             return finish_fix(request, params)
         started_here = "auth_flow" in request.session  # only a sign-in we started is worth recording
-        client = request.client.host if request.client else "unknown"
+        client = client_ip(request)
         if "error" in params:
             request.session.pop("auth_flow", None)
             detail = params.get("error_description", params["error"])
@@ -337,8 +416,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
             if started_here and sign_in_problem_limiter.allow(client):
                 record("sign-in", code, str(exc))
             return sign_in_failed(request, code, str(exc))
+        next_page = _safe_next(request.session.pop("next", None))
+        store.end_session(request.session.get("sid"))  # signing in again replaces the old session
         request.session["user"] = user
-        return RedirectResponse(_safe_next(request.session.pop("next", None)), status_code=303)
+        request.session["sid"] = store.create_session(user, SESSION_HOURS)
+        request.session["signed_in_at"] = utcnow().isoformat(timespec="seconds")
+        request.session["csrf"] = secrets.token_urlsafe(24)  # a fresh form token for the signed-in session
+        return RedirectResponse(next_page, status_code=303)
 
     def sign_in_failed(request: Request, code: str, detail: str):
         known = code in problems.HINTS
@@ -348,8 +432,29 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
                        actions=[("Try again", "/login"), ("Setup guide", "/setup")], kind="error")
 
     @app.get("/logout")
-    def logout(request: Request):
+    def logout_page(request: Request):
+        """Signing out is a button (a form), so another website can't sign people out with a link."""
+        if not request.session.get("user"):
+            request.session.clear()
+            return RedirectResponse("/", status_code=303)
+        return render(request, "logout.html")
+
+    @app.post("/logout")
+    def logout(request: Request, csrf: str = Form("")):
+        if request.session.get("user") and not csrf_ok(request, csrf):
+            return RedirectResponse("/logout", status_code=303)
+        store.end_session(request.session.get("sid"))
         request.session.clear()
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/logout/everywhere")
+    def logout_everywhere(request: Request, csrf: str = Form("")):
+        user = request.session.get("user")
+        if not user or not csrf_ok(request, csrf):
+            return RedirectResponse("/logout", status_code=303)
+        ended = store.end_user_sessions(user["tid"], user["oid"])
+        request.session.clear()
+        flash(request, f"Signed out on every device ({ended} session{'s' if ended != 1 else ''} ended).", "good")
         return RedirectResponse("/", status_code=303)
 
     # ------------------------------------------------------------ connecting a tenant
@@ -791,6 +896,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
     # ------------------------------------------------------------ Tenvaultix console (/admin)
 
     add_console(app, store=store, settings=settings, render=render, message=message, flash=flash, csrf_ok=csrf_ok,
-                is_ops=is_ops, record=record, credential_check=credential_check, tenant_lookup=tenant_lookup)
+                is_ops=is_ops, record=record, credential_check=credential_check, tenant_lookup=tenant_lookup,
+                client_ip=client_ip)
 
     return app

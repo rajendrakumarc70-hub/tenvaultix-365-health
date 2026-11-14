@@ -65,21 +65,25 @@ The address must match exactly: `https`, no trailing slash. A mismatch gives err
    company from the app's Connect page. If you want to scan the Tenvaultix tenant itself, simply connect it
    through the app like a customer would.
 
-### Optional: permissions for one-click fixes
+### One-click fixes: add nothing here
 
 One-click fixes let a customer's admin make a few safe changes from the report (stop staff approving outside
 apps, only admins register apps, stop guests inviting guests, turn off "Anyone" links). They use **delegated**
-permissions: the admin approves one permission on Microsoft's screen when they press **Fix it for me**, and the
-change is made with their own admin rights. The app doesn't keep their sign-in afterwards.
+permissions that the app asks for at the moment the admin presses **Fix it for me**:
 
-1. **Add a permission → Microsoft Graph → Delegated permissions**, and tick:
+| Permission | Used by |
+|---|---|
+| `Policy.ReadWrite.Authorization` | App approvals, app registration, guest invitations |
+| `SharePointTenantSettings.ReadWrite.All` | Turning off "Anyone" links |
 
-   | Permission | Used by |
-   |---|---|
-   | `Policy.ReadWrite.Authorization` | App approvals, app registration, guest invitations |
-   | `SharePointTenantSettings.ReadWrite.All` | Turning off "Anyone" links |
+**Don't add them to API permissions.** When a customer connects, Microsoft approves *everything* listed in the
+app registration for their whole company, so a write permission listed there would be granted to every customer
+on day one. Left out, Microsoft asks the admin for it only when they use a fix, and the result page shows them how
+to remove it afterwards.
 
-2. **Don't** grant admin consent for these. Each admin approves them only when they use a fix.
+If you added them earlier: select each one under **API permissions** → **Remove permission**. Customers who
+connected while they were listed can remove them in Entra (Enterprise apps → Tenvaultix 365 Health Check →
+Permissions → Admin consent → the permission → **…** → Revoke permission).
 
 No extra redirect address is needed: fixes come back to `/auth/callback`.
 
@@ -170,6 +174,8 @@ set in `wrangler.jsonc`, and a fresh deploy picks up new secrets.)
 
 Tip: every one of these errors is also recorded. Open **/setup** on the site to see recent ones with the fix, or
 set `TVX_OPS_EMAILS` to your work email and `TVX_OPS_TENANT_ID` to the **Directory (tenant) ID**
+(after your first sign-in, `/setup` shows your account ID: add it as `TVX_OPS_OBJECT_IDS` so the console checks
+the account itself rather than an email that could be renamed)
 (on the app registration's Overview page), then open **/admin/errors** (in the Tenvaultix console) for the full list and a **Test the app's Microsoft
 credential** button.
 

@@ -6,7 +6,7 @@
   <meta name="robots" content="noindex">
   <title>{% block title %}Console{% endblock %} · Tenvaultix Console</title>
   <link rel="icon" href="/static/favicon.png">
-  <link rel="stylesheet" href="/static/style.css?v=8">
+  <link rel="stylesheet" href="/static/style.css?v=9">
 </head>
 <body class="console">
 <div class="console-shell">
@@ -29,7 +29,7 @@
     <div class="console-me">
       <span>{{ user.email if user else '' }}</span>
       <a href="/">Back to the site</a>
-      <a href="/logout">Sign out</a>
+      <form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="link-button">Sign out</button></form>
     </div>
   </aside>
   <div class="console-main">

@@ -28,22 +28,23 @@ class LoginError(Exception):
 
 
 class MicrosoftAuth:
+    """Every sign-in and every fix approval gets its own MSAL client with an empty token cache, and none asks for
+    `offline_access`: the app never holds a refresh token that could mint new tokens later."""
+
     def __init__(self, settings: Settings):
         self.settings = settings
-        self._app = None
 
-    @property
-    def app(self) -> msal.ConfidentialClientApplication:
-        if self._app is None:
-            self._app = msal.ConfidentialClientApplication(
-                self.settings.client_id,
-                authority=f"{LOGIN_HOST}/organizations",
-                client_credential=self.settings.client_credential(),
-            )
-        return self._app
+    def _client(self) -> msal.ConfidentialClientApplication:
+        return msal.ConfidentialClientApplication(
+            self.settings.client_id,
+            authority=f"{LOGIN_HOST}/organizations",
+            client_credential=self.settings.client_credential(),
+            token_cache=msal.TokenCache(),
+            exclude_scopes=["offline_access"],
+        )
 
     def start_login(self, session: dict) -> str:
-        flow = self.app.initiate_auth_code_flow(
+        flow = self._client().initiate_auth_code_flow(
             scopes=["User.Read"], redirect_uri=self.settings.url("/auth/callback"), prompt="select_account")
         session["auth_flow"] = {k: v for k, v in flow.items() if k != "auth_uri"}  # keep the cookie small
         return flow["auth_uri"]
@@ -53,7 +54,7 @@ class MicrosoftAuth:
         if not flow:
             raise LoginError("Your sign-in took too long or was started in another tab. Please try again.")
         try:
-            result = self.app.acquire_token_by_auth_code_flow(flow, params)
+            result = self._client().acquire_token_by_auth_code_flow(flow, params)
         except ValueError as exc:  # state mismatch
             raise LoginError("Sign-in couldn't be verified. Please try again.") from exc
         if "error" in result:
@@ -64,19 +65,12 @@ class MicrosoftAuth:
             raise LoginError("Microsoft didn't return the account details we need.")
         return {"oid": claims["oid"], "tid": claims["tid"], "email": email, "name": claims.get("name") or email}
 
-    # ---- one-click fixes: the admin approves one delegated permission just before the change
-
-    def _fix_app(self) -> msal.ConfidentialClientApplication:
-        """A new client with an empty token cache each time, so the admin's token isn't kept after the request."""
-        return msal.ConfidentialClientApplication(
-            self.settings.client_id,
-            authority=f"{LOGIN_HOST}/organizations",
-            client_credential=self.settings.client_credential(),
-            token_cache=msal.TokenCache(),
-        )
+    # ---- one-click fixes: the admin approves one delegated permission just before the change. It is requested
+    # here at that moment, never listed in the app registration (anything listed there is approved for the whole
+    # company when it connects).
 
     def start_fix(self, session: dict, scope: str, login_hint: str) -> str:
-        flow = self._fix_app().initiate_auth_code_flow(
+        flow = self._client().initiate_auth_code_flow(
             scopes=[scope], redirect_uri=self.settings.url("/auth/callback"), login_hint=login_hint)
         session["fix_flow"] = {k: v for k, v in flow.items() if k != "auth_uri"}
         return flow["auth_uri"]
@@ -86,7 +80,7 @@ class MicrosoftAuth:
         if not flow:
             raise LoginError("The approval took too long or was started in another tab. Please try again.")
         try:
-            result = self._fix_app().acquire_token_by_auth_code_flow(flow, params)
+            result = self._client().acquire_token_by_auth_code_flow(flow, params)
         except ValueError as exc:  # state mismatch
             raise LoginError("The approval couldn't be verified. Please try again.") from exc
         if "error" in result or "access_token" not in result:

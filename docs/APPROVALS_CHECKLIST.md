@@ -77,7 +77,8 @@ really an admin before saving anything. Customers can remove access any time in 
 Before real customers, change these from the dev set-up (details in the README):
 
 - **Permanent storage.** Today the database lives on the container's temporary disk and is wiped when the
-  container sleeps or is redeployed. Move it to Cloudflare D1 or PostgreSQL.
+  container sleeps or is redeployed. Point `TVX_DATABASE_URL` at a PostgreSQL database (for example Azure
+  Database for PostgreSQL), or use the server kit in `docs/DEPLOY_SERVER.md`.
 - **Your own address**, for example `health.yourcompany.com`, added as a Custom Domain on the Worker. Then add its
   two redirect addresses to the app registration.
 - **Fixed session secret:** add `TVX_SESSION_SECRET` as a Cloudflare secret.

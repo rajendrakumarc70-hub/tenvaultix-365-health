@@ -16,14 +16,22 @@ fixed.
 
 - **Read-only scanning.** The app reads tenant settings with read-only Microsoft Graph application permissions.
   It never reads email content, files, chats or calendars, and a scan can't change anything.
-- **Changes need the customer's admin every time.** One-click fixes use a permission the customer's admin approves
-  on Microsoft's own page for that one change; the app doesn't keep it. Every change is recorded and can be undone.
+- **Changes need the customer's admin.** One-click fixes use a write permission the app asks for only at that moment
+  (it is never in the app registration, so connecting doesn't grant it). The admin approves it on Microsoft's own
+  page; the app uses it for that one change and keeps no token, and never asks Microsoft for a refresh token. The
+  result page shows the admin how to remove the approval afterwards. Every change is recorded and can be undone.
 - **No passwords.** Everyone signs in with Microsoft, so their own MFA and Conditional Access apply.
 - **Only findings are stored**, never raw directory data. A company can delete everything with Disconnect.
-- **Web protections:** HTTPS only (HSTS), strict Content-Security-Policy, CSRF tokens on every form, signed
-  session cookies (8 hours, Secure, SameSite=Lax), rate limits on public endpoints, no stack traces shown.
-- **The Tenvaultix console** (`/admin`) answers "not found" to anyone who isn't on the team, logs every sign-in,
-  change, export and restore, and records attempts by people who aren't on the team.
+- **Web protections:** HTTPS only (HSTS), strict Content-Security-Policy, CSRF tokens on every form (Sign out
+  included), rate limits on public endpoints keyed on the visitor's real address (forwarded addresses are trusted
+  only from the proxy in front), requests over 5 MB refused before they're read, no stack traces shown.
+- **Sessions end on the server.** Each sign-in is a row in the database (only a hash of the cookie value is kept),
+  valid for 8 hours. Sign out deletes it, so a copied cookie stops working; "Sign out on every device" ends them
+  all, and `python -m app.cli sign-out-everyone` ends everyone's.
+- **The Tenvaultix console** (`/admin`) answers "not found" to anyone who isn't on the team, asks for a fresh
+  Microsoft sign-in every hour, can check the team's account IDs instead of emails (`TVX_OPS_OBJECT_IDS`), logs
+  every sign-in, change, export and restore, and records attempts by people who aren't on the team. Once it is
+  set up, the server's setup page (`/setup`) is shown to the team only.
 - **Emergency stop:** one switch (console → Security, or `TVX_EMERGENCY_STOP=on` on the server) stops all use of
   Microsoft access while an incident is handled.
 

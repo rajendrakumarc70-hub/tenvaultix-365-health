@@ -10,6 +10,7 @@ import csv
 import io
 import json
 import re
+from datetime import datetime, timedelta
 from typing import Callable
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
@@ -25,6 +26,7 @@ EMAIL = re.compile(r"^[^@\s]+@[a-z0-9.-]+\.[a-z]{2,}$", re.I)
 GSTIN = re.compile(r"^[0-9]{2}[A-Z0-9]{13}$")
 UNITS = ["month", "tenant/month", "user/month", "year"]
 MAX_BACKUP = 2 * 1024 * 1024
+CONSOLE_SIGN_IN = timedelta(hours=1)  # the console asks for a fresh Microsoft sign-in after this
 FILTERS = {
     "all": "All", "paying": "Paying", "trial": "On trial", "attention": "Needs attention",
     "ended": "Ended or suspended", "waiting": "Not connected yet",
@@ -40,12 +42,20 @@ ACTIVITY = {  # filter on the Security page: label, action prefix
 
 def add_console(app: FastAPI, *, store: Store, settings, render: Callable, message: Callable, flash: Callable,
                 csrf_ok: Callable, is_ops: Callable, record: Callable, credential_check: Callable,
-                tenant_lookup: Callable) -> None:
+                tenant_lookup: Callable, client_ip: Callable[[Request], str]) -> None:
 
     # ------------------------------------------------------------ helpers
 
     def audit(request: Request, actor: str | None, action: str, detail: str = "") -> None:
-        store.add_audit(actor, action, detail, request.client.host if request.client else None)
+        store.add_audit(actor, action, detail, client_ip(request))
+
+    def recent_sign_in(request: Request) -> bool:
+        """The console needs a Microsoft sign-in from the last hour, not just any session up to 8 hours old."""
+        try:
+            at = datetime.fromisoformat(request.session.get("signed_in_at") or "")
+        except ValueError:
+            return False
+        return utcnow() - at < CONSOLE_SIGN_IN
 
     def team(request: Request, path: str):
         """(user, None) for the Tenvaultix team; otherwise (None, the response to send)."""
@@ -57,6 +67,9 @@ def add_console(app: FastAPI, *, store: Store, settings, render: Callable, messa
                 request.session["console_denied"] = True
                 audit(request, user["email"], "console.denied", f"Signed in from tenant {user['tid']}, opened {path}")
             return None, message(request, "Page not found", "This page doesn't exist.", status_code=404)
+        if not recent_sign_in(request):
+            flash(request, "For safety, the console asks you to sign in again every hour.")
+            return None, RedirectResponse(f"/login?next={path}", status_code=303)
         if not request.session.get("console_seen"):
             request.session["console_seen"] = True
             audit(request, user["email"], "console.sign-in", f"Opened {path}")
@@ -64,7 +77,7 @@ def add_console(app: FastAPI, *, store: Store, settings, render: Callable, messa
 
     def team_post(request: Request, csrf: str):
         user = request.session.get("user")
-        return user if is_ops(user) and csrf_ok(request, csrf) else None
+        return user if is_ops(user) and recent_sign_in(request) and csrf_ok(request, csrf) else None
 
     def page(request: Request, name: str, nav: str, **context):
         return render(request, f"console/{name}", nav=nav, **context)
@@ -123,7 +136,8 @@ def add_console(app: FastAPI, *, store: Store, settings, render: Callable, messa
         return True
 
     def customer(tid: str) -> dict | None:
-        return next((c for c in customers() if c["id"] == tid), None)
+        plans = plans_by_id()
+        return next((enrich(r, plans) for r in store.list_customers(tenant_id=tid)), None)
 
     def describe(field: str, value, plans: dict) -> str:
         if value in (None, ""):
