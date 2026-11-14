@@ -1,7 +1,8 @@
 """The Tenvaultix console (/admin): customers, licences, prices, errors and backups, for the Tenvaultix team only.
 
 Only people listed in TVX_OPS_EMAILS who sign in from TVX_OPS_TENANT_ID can open it; everyone else gets "not found".
-Every licence change is written to the customer's licence history with who made it.
+Every licence change is written to the customer's licence history with who made it, and every console sign-in,
+change, export and restore goes in the activity log on the Security page.
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ from typing import Callable
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 
-from . import licensing, problems
+from . import licensing, problems, safety
 from .db import Store, utcnow
 from .dnscheck import normalize_domain
 from .licensing import FormError
@@ -30,11 +31,21 @@ FILTERS = {
 }
 
 
-def add_console(app: FastAPI, *, store: Store, render: Callable, message: Callable, flash: Callable,
+ACTIVITY = {  # filter on the Security page: label, action prefix
+    "all": ("Everything", None), "sign-in": ("Sign-ins", "console."), "customers": ("Customers and licences", "customer."),
+    "licences": ("Licence changes", "licence."), "pricing": ("Pricing", "pricing."),
+    "data": ("Exports and restores", "data."), "security": ("Security", "security."),
+}
+
+
+def add_console(app: FastAPI, *, store: Store, settings, render: Callable, message: Callable, flash: Callable,
                 csrf_ok: Callable, is_ops: Callable, record: Callable, credential_check: Callable,
                 tenant_lookup: Callable) -> None:
 
     # ------------------------------------------------------------ helpers
+
+    def audit(request: Request, actor: str | None, action: str, detail: str = "") -> None:
+        store.add_audit(actor, action, detail, request.client.host if request.client else None)
 
     def team(request: Request, path: str):
         """(user, None) for the Tenvaultix team; otherwise (None, the response to send)."""
@@ -42,7 +53,13 @@ def add_console(app: FastAPI, *, store: Store, render: Callable, message: Callab
         if not user:
             return None, RedirectResponse(f"/login?next={path}", status_code=303)
         if not is_ops(user):
+            if not request.session.get("console_denied"):  # once per session, so it can't flood the log
+                request.session["console_denied"] = True
+                audit(request, user["email"], "console.denied", f"Signed in from tenant {user['tid']}, opened {path}")
             return None, message(request, "Page not found", "This page doesn't exist.", status_code=404)
+        if not request.session.get("console_seen"):
+            request.session["console_seen"] = True
+            audit(request, user["email"], "console.sign-in", f"Opened {path}")
         return user, None
 
     def team_post(request: Request, csrf: str):
@@ -238,6 +255,7 @@ def add_console(app: FastAPI, *, store: Store, render: Callable, message: Callab
         store.save_details(tid, details, user["email"])
         store.save_licence(tid, licence, user["email"],
                            "Customer added. " + change_summary({}, licence))
+        audit(request, user["email"], "customer.add", f"{details['company']} ({tid})")
         flash(request, f"Added {details['company']}. The licence applies when they connect.", "good")
         return RedirectResponse(f"/admin/customers/{tid}", status_code=303)
 
@@ -275,6 +293,7 @@ def add_console(app: FastAPI, *, store: Store, render: Callable, message: Callab
             flash(request, "Nothing changed.")
         else:
             store.save_licence(tid, licence, user["email"], summary)
+            audit(request, user["email"], "licence.change", f"{c['name'] or tid}: {summary}")
             flash(request, f"Licence saved. {summary}.", "good")
         return RedirectResponse(f"/admin/customers/{tid}#licence", status_code=303)
 
@@ -296,6 +315,7 @@ def add_console(app: FastAPI, *, store: Store, render: Callable, message: Callab
         summary = change_summary(before, change)
         if summary:
             store.save_licence(tid, change, user["email"], summary)
+            audit(request, user["email"], "licence.change", f"{c['name'] or tid}: {summary}")
             flash(request, f"Licence saved. {summary}.", "good")
         return RedirectResponse(f"/admin/customers/{tid}#licence", status_code=303)
 
@@ -314,12 +334,13 @@ def add_console(app: FastAPI, *, store: Store, render: Callable, message: Callab
             flash(request, str(exc), "error")
             return RedirectResponse(f"/admin/customers/{tid}#details", status_code=303)
         store.save_details(tid, details, user["email"])
+        audit(request, user["email"], "customer.details", f"{details['company'] or tid} ({tid})")
         flash(request, "Customer details saved.", "good")
         return RedirectResponse(f"/admin/customers/{tid}#details", status_code=303)
 
     @app.get("/admin/customers.csv")
     def customers_csv(request: Request):
-        user, stop = team(request, "/admin/customers")
+        user, stop = team(request, "/admin/customers.csv")
         if stop:
             return stop
         out = io.StringIO()
@@ -334,6 +355,7 @@ def add_console(app: FastAPI, *, store: Store, render: Callable, message: Callab
                 f"{c['mrr']:.0f}" if c["mrr"] else "", c.get("cycle") or "", c.get("contact_name"),
                 c.get("contact_email"), c.get("contact_phone"), c.get("gstin"), c.get("address"),
                 (c.get("created_at") or "")[:10])])
+        audit(request, user["email"], "data.export", "Downloaded the customer list (CSV)")
         name = f"tenvaultix-customers-{utcnow():%Y-%m-%d}.csv"
         return Response(out.getvalue(), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="{name}"'})
@@ -366,6 +388,7 @@ def add_console(app: FastAPI, *, store: Store, render: Callable, message: Callab
             store.save_plan({"id": plan_id, "name": licensing.short(name, 40), "price_inr": None, "price_usd": None,
                              "unit": "month", "max_users": None, "scan_days": 7, "tagline": "", "features": [],
                              "public": False, "featured": False, "cta": "trial", "sort": last + 1}, user["email"])
+            audit(request, user["email"], "pricing.add", f"Added plan {plan_id}")
             flash(request, "Plan added. It's hidden from the pricing page until you tick “Show on pricing page”.",
                   "good")
             return RedirectResponse(f"/admin/pricing#plan-{plan_id}", status_code=303)
@@ -383,6 +406,7 @@ def add_console(app: FastAPI, *, store: Store, render: Callable, message: Callab
         else:
             if days:
                 store.set_option("trial_days", str(days))
+                audit(request, user["email"], "pricing.trial", f"Free trial length set to {days} days")
                 flash(request, f"New trials now last {days} days. Trials already running keep their end date.",
                       "good")
         return RedirectResponse("/admin/pricing#trial", status_code=303)
@@ -418,6 +442,9 @@ def add_console(app: FastAPI, *, store: Store, render: Callable, message: Callab
             flash(request, f"{plan['name']}: {exc}", "error")
             return RedirectResponse(f"/admin/pricing#plan-{plan_id}", status_code=303)
         store.save_plan(updated, user["email"])
+        changed = [k for k in updated if k != "id" and plan.get(k) != updated[k]]
+        audit(request, user["email"], "pricing.save",
+              f"{updated['name']}: changed {', '.join(changed) if changed else 'nothing'}")
         shown = " It's on the pricing page now." if updated["public"] else ""
         flash(request, f"Saved {updated['name']}.{shown}", "good")
         return RedirectResponse(f"/admin/pricing#plan-{plan_id}", status_code=303)
@@ -427,6 +454,7 @@ def add_console(app: FastAPI, *, store: Store, render: Callable, message: Callab
         user = team_post(request, csrf)
         if user and licensing.PLAN_ID.match(plan_id):
             if store.delete_plan(plan_id):
+                audit(request, user["email"], "pricing.delete", f"Deleted plan {plan_id}")
                 flash(request, "Plan deleted.", "good")
             else:
                 flash(request, "That plan can't be deleted while customers are on it (or it's the free trial).",
@@ -455,12 +483,76 @@ def add_console(app: FastAPI, *, store: Store, render: Callable, message: Callab
             return RedirectResponse("/admin/errors", status_code=303)
         try:
             credential_check(user["tid"])
+            audit(request, user["email"], "security.credential-test", "The Microsoft credential works")
             flash(request, "The app's Microsoft credential works: Microsoft issued a token for your tenant.", "good")
         except Exception as exc:  # AuthError, or msal/network errors
             code = problems.code_for(str(exc), "credential")
             record("credential", code, str(exc))
+            audit(request, user["email"], "security.credential-test", f"Failed: {code}")
             flash(request, f"The credential test failed: {problems.hint(code)['title']} ({code}).", "warn")
         return RedirectResponse("/admin/errors", status_code=303)
+
+    # ------------------------------------------------------------ security: emergency stop, checklist, activity
+
+    def checklist() -> list[tuple[str, str, str]]:
+        """(good | warn | bad, what, why or what to do) for things the app can see about itself."""
+        items = [
+            ("good", "HTTPS only", "Browsers are told to use HTTPS for a year (HSTS).") if settings.https_only else
+            ("bad", "Not on HTTPS", "TVX_BASE_URL should start with https:// on a live site."),
+            ("good", "Microsoft credential: certificate", "Harder to leak than a secret.") if settings.has_certificate
+            else ("warn", "Microsoft credential: client secret",
+                  "Switch to a certificate (docs/AZURE_APP_REGISTRATION.md, option B) and keep the secret's expiry short."),
+            ("good", "Session secret set", "Sign-in cookies can't be forged without it.")
+            if settings.session_secret_from_env else
+            ("bad", "No TVX_SESSION_SECRET", "A temporary key is in use; set a long random one."),
+            ("good", "Automatic scans on", "Scans run on schedule.") if settings.scheduler else
+            ("warn", "Automatic scans off", "Set TVX_SCHEDULER=on, or run scan-due hourly."),
+        ]
+        stop = safety.stop_state(settings, store)
+        items.append(("bad", "Emergency stop is ON", f"Turned on by {stop['by']}.") if stop else
+                     ("good", "Emergency stop is off", "Everything is running normally."))
+        return items
+
+    @app.get("/admin/security")
+    def security(request: Request, show: str = "all"):
+        user, stop = team(request, "/admin/security")
+        if stop:
+            return stop
+        show = show if show in ACTIVITY else "all"
+        return page(request, "security.html", "security", checks=checklist(), activity_filters=ACTIVITY, show=show,
+                    activity=store.list_audit(limit=200, prefix=ACTIVITY[show][1]),
+                    denied=store.list_audit(limit=5, prefix="console.denied"))
+
+    @app.post("/admin/security/stop")
+    def emergency_stop(request: Request, csrf: str = Form(""), confirm: str = Form("")):
+        user = team_post(request, csrf)
+        if not user:
+            return RedirectResponse("/admin", status_code=303)
+        if confirm.strip().upper() != "STOP":
+            flash(request, "Type STOP to confirm.", "warn")
+        elif not safety.stop_state(settings, store):
+            safety.turn_on(store, user["email"])
+            audit(request, user["email"], "security.stop-on", "Emergency stop turned on")
+            flash(request, "Emergency stop turned on. Customers now see “paused for maintenance”. If the Microsoft "
+                           "secret may have leaked, delete it in Entra too.", "warn")
+        return RedirectResponse("/admin/security", status_code=303)
+
+    @app.post("/admin/security/resume")
+    def emergency_resume(request: Request, csrf: str = Form(""), confirm: str = Form("")):
+        user = team_post(request, csrf)
+        if not user:
+            return RedirectResponse("/admin", status_code=303)
+        state = safety.stop_state(settings, store)
+        if confirm.strip().upper() != "RESUME":
+            flash(request, "Type RESUME to confirm.", "warn")
+        elif state and state["source"] == "server":
+            flash(request, "The stop is set on the server (TVX_EMERGENCY_STOP). Remove it there and restart the app.",
+                  "warn")
+        elif state:
+            safety.turn_off(store)
+            audit(request, user["email"], "security.stop-off", "Emergency stop turned off")
+            flash(request, "Everything is running again.", "good")
+        return RedirectResponse("/admin/security", status_code=303)
 
     # ------------------------------------------------------------ backup and restore
 
@@ -479,6 +571,7 @@ def add_console(app: FastAPI, *, store: Store, render: Callable, message: Callab
         user, stop = team(request, "/admin/backup")
         if stop:
             return stop
+        audit(request, user["email"], "data.backup", "Downloaded a console backup")
         name = f"tenvaultix-console-{utcnow():%Y-%m-%d-%H%M}.json"
         return Response(json.dumps(store.export_admin(), indent=1, ensure_ascii=False),
                         media_type="application/json",
@@ -503,6 +596,8 @@ def add_console(app: FastAPI, *, store: Store, render: Callable, message: Callab
         except (ValueError, UnicodeDecodeError) as exc:
             flash(request, f"Nothing was restored: {exc}", "error")
             return RedirectResponse("/admin/backup", status_code=303)
+        audit(request, user["email"], "data.restore",
+              f"Restored {counts['plans']} plans and {counts['accounts']} customer records")
         flash(request, f"Restored {counts['plans']} plans and {counts['accounts']} customer records.", "good")
         return RedirectResponse("/admin", status_code=303)
 

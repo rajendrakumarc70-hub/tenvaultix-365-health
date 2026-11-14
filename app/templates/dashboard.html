@@ -14,7 +14,7 @@
       <div class="btn-row">
         <form method="post" action="/app/scan">
           <input type="hidden" name="csrf" value="{{ csrf }}">
-          <button class="btn btn-sky" type="submit"{% if running or not scanning_allowed %} disabled{% endif %}>{% if running %}Scanning…{% else %}Run scan now{% endif %}</button>
+          <button class="btn btn-sky" type="submit"{% if running or not scanning_allowed or emergency %} disabled{% endif %}>{% if running %}Scanning…{% else %}Run scan now{% endif %}</button>
         </form>
         {% if latest %}<a class="btn btn-light" href="/app/report/{{ latest.id }}">Open full report</a>{% endif %}
       </div>
@@ -39,6 +39,9 @@
 <div class="wrap">
   {% if running %}
   <div class="banner"><p><strong>Scan in progress.</strong> It usually takes a minute or two. This page refreshes by itself.</p></div>
+  {% endif %}
+  {% if emergency %}
+  <div class="banner warn"><p><strong>Scans and changes are paused for maintenance.</strong> Your reports are still here. We'll resume as soon as we can.</p></div>
   {% endif %}
   {% if licence.key == 'trial_ended' %}
   <div class="banner warn">

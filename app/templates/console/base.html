@@ -6,7 +6,7 @@
   <meta name="robots" content="noindex">
   <title>{% block title %}Console{% endblock %} · Tenvaultix Console</title>
   <link rel="icon" href="/static/favicon.png">
-  <link rel="stylesheet" href="/static/style.css?v=7">
+  <link rel="stylesheet" href="/static/style.css?v=8">
 </head>
 <body class="console">
 <div class="console-shell">
@@ -21,6 +21,8 @@
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h6l6 6-6 6-6-6z"/><circle cx="5.2" cy="5.2" r="1.2" class="cut"/></svg>Pricing</a>
       <a href="/admin/errors" class="{{ 'on' if nav == 'errors' }}"{% if nav == 'errors' %} aria-current="page"{% endif %}>
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 15 14H1z"/><rect x="7.2" y="5.5" width="1.6" height="4.5" class="cut"/><rect x="7.2" y="11" width="1.6" height="1.6" class="cut"/></svg>Errors</a>
+      <a href="/admin/security" class="{{ 'on' if nav == 'security' }}"{% if nav == 'security' %} aria-current="page"{% endif %}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1 2.5 3v4.6c0 3.4 2.3 6 5.5 7.4 3.2-1.4 5.5-4 5.5-7.4V3z"/></svg>Security</a>
       <a href="/admin/backup" class="{{ 'on' if nav == 'backup' }}"{% if nav == 'backup' %} aria-current="page"{% endif %}>
         <svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="3.5" rx="6" ry="2"/><path d="M2 3.5v9c0 1.1 2.7 2 6 2s6-.9 6-2v-9c0 1.1-2.7 2-6 2s-6-.9-6-2z"/></svg>Backup</a>
     </nav>
@@ -38,6 +40,7 @@
       </div>
       <div class="btn-row">{% block actions %}{% endblock %}</div>
     </header>
+    {% if emergency %}<div class="stop-bar" role="alert"><strong>Emergency stop is on.</strong> No scans, connections, fixes or Azure reads are running. Turned on by {{ emergency.by }}{% if emergency.at %}, {{ emergency.at|date }}{% endif %}. <a href="/admin/security">Security</a></div>{% endif %}
     {% for f in flash %}<div class="flash {{ f.kind }}" role="status">{{ f.text }}</div>{% endfor %}
     {% block content %}{% endblock %}
   </div>

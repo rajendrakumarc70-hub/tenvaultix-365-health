@@ -239,6 +239,11 @@ python -m app.cli set-plan <tenant-id> business
   the read-only **Cost Management Reader** role; it can't see or change resources.
 - Error records keep Microsoft's message for the team; public pages (`/setup`) show only codes and advice, and
   never anything from a customer tenant. A crash shows a friendly page and never the stack trace.
+- The console logs every team sign-in, change, export and restore, plus attempts by people who aren't on the
+  team (console → Security). An **emergency stop** there (or `TVX_EMERGENCY_STOP=on`) pauses all use of
+  Microsoft access. Plan for incidents: [docs/INCIDENT_RESPONSE.md](docs/INCIDENT_RESPONSE.md); how to report a
+  vulnerability: [SECURITY.md](SECURITY.md).
+- HTTPS sites send HSTS, so browsers refuse plain HTTP for a year.
 - Sessions are signed cookies (8 hours, `SameSite=Lax`, `Secure` on HTTPS). Every form has a CSRF token,
   responses carry a strict Content-Security-Policy, and the free domain check is rate-limited per IP.
 - Have the privacy page (`app/templates/privacy.html`) reviewed for DPDP (India), GDPR (UK/EU) and the

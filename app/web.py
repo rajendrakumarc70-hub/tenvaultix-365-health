@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import azure_costs, blueprint, demo, fixes, licensing, problems, scheduler
+from . import azure_costs, blueprint, demo, fixes, licensing, problems, safety, scheduler
 from .auth import LoginError, MicrosoftAuth, consent_error_message, is_consent_admin
 from .checks import results_for_domain, run_checks
 from .collector import collect
@@ -40,6 +40,7 @@ APP_DIR = Path(__file__).parent
 MANUAL_SCAN_GAP = timedelta(minutes=5)
 MAX_MEMBERS = 25
 EMAIL_RE = re.compile(r"^[^@\s]+@[a-z0-9.-]+\.[a-z]{2,}$", re.I)
+HSTS = "max-age=31536000; includeSubDomains"  # browsers then refuse plain HTTP for this site for a year
 SECURITY_HEADERS = {
     "Content-Security-Policy": ("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
                                 "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"),
@@ -118,7 +119,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         if settings.scheduler:
-            scheduler.start(store, collect_tenant)
+            scheduler.start(store, collect_tenant, paused=lambda: stopped() is not None)
         yield
 
     app = FastAPI(title="Tenvaultix 365 Health Check", docs_url=None, redoc_url=None, openapi_url=None,
@@ -138,12 +139,20 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
     sign_in_problem_limiter = RateLimiter(20, 3600)  # the sign-in return address is public; don't let it flood the log
     app.state.store = store
 
+    def add_security_headers(response) -> None:
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        if settings.https_only:
+            response.headers.setdefault("Strict-Transport-Security", HSTS)
+
+    def stopped() -> dict | None:
+        return safety.stop_state(settings, store)
+
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
         response = await call_next(request)
-        for name, value in SECURITY_HEADERS.items():
-            response.headers.setdefault(name, value)
-        if request.url.path.startswith("/app"):
+        add_security_headers(response)
+        if request.url.path.startswith(("/app", "/admin")):
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -157,8 +166,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
             "title": "Something went wrong on our side",
             "body": "The app hit an unexpected error. It's been logged. Please try again in a minute.",
             "actions": [("Back to home", "/")], "kind": "error"}, status_code=500)
-        for name, value in SECURITY_HEADERS.items():
-            response.headers.setdefault(name, value)
+        add_security_headers(response)
         return response
 
     # ------------------------------------------------------------ helpers
@@ -168,7 +176,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         session.setdefault("csrf", secrets.token_urlsafe(24))
         base = {
             "settings": settings, "user": session.get("user"), "csrf": session["csrf"],
-            "flash": session.pop("flash", []), "year": utcnow().year,
+            "flash": session.pop("flash", []), "year": utcnow().year, "emergency": stopped(),
         }
         return templates.TemplateResponse(request, name, {**base, **context}, status_code=status_code)
 
@@ -353,11 +361,19 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
             return RedirectResponse("/app", status_code=303)
         return render(request, "connect.html", permissions=GRAPH_PERMISSIONS, tenant=tenant)
 
+    def paused_message(request: Request, what: str):
+        """Shown while the emergency stop is on. Customers see 'maintenance', never the reason."""
+        return message(request, f"{what} is paused",
+                       "Tenvaultix has paused connecting, scans and changes for maintenance. Your reports are still "
+                       "here; please try again later.", actions=[("Back to dashboard", "/app")])
+
     @app.get("/connect/start")
     def connect_start(request: Request):
         user = request.session.get("user")
         if not user:
             return RedirectResponse("/login?next=/connect", status_code=303)
+        if stopped():
+            return paused_message(request, "Connecting")
         state = secrets.token_urlsafe(24)
         request.session["consent_state"] = state
         return RedirectResponse(auth.admin_consent_url(user["tid"], state), status_code=303)
@@ -395,6 +411,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         return finish_connect(request, background)
 
     def finish_connect(request: Request, background: BackgroundTasks):
+        if stopped():
+            return paused_message(request, "Connecting")
         user = request.session["user"]
         tenant_id = request.session["pending_tenant"]
         if store.get_tenant(tenant_id):
@@ -535,7 +553,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         user, tenant, role = membership(request)
         if not (tenant and role) or not csrf_ok(request, csrf):
             return RedirectResponse("/app", status_code=303)
-        if not can_scan(tenant):
+        if stopped():
+            flash(request, "Scans are paused for maintenance. Your reports are still here; please try again later.",
+                  "warn")
+        elif not can_scan(tenant):
             ended = {"suspended": "Your account is paused.", "expired": "Your licence has ended."}
             flash(request, ended.get(licensing.state(tenant)["key"], "Your free trial has ended.")
                   + " Contact Tenvaultix to keep scanning.", "warn")
@@ -597,6 +618,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
 
     @app.post("/app/fix/{check_id}")
     def fix_start(request: Request, check_id: str, csrf: str = Form("")):
+        if stopped():
+            return paused_message(request, "Changing settings")
         user, tenant = owner_context(request)
         fix = fixes.FIXES.get(check_id)
         if not (fix and tenant and csrf_ok(request, csrf)):
@@ -606,6 +629,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
 
     @app.post("/app/fixes/{fix_id}/undo")
     def fix_undo(request: Request, fix_id: int, csrf: str = Form("")):
+        if stopped():
+            return paused_message(request, "Changing settings")
         user, tenant = owner_context(request)
         record = store.get_fix(fix_id)
         if not (tenant and record and record["tenant_id"] == tenant["id"] and csrf_ok(request, csrf)
@@ -618,6 +643,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
     def finish_fix(request: Request, params: dict):
         pending = request.session.pop("fix_pending", None) or {}
         back = [("Back to dashboard", "/app")]
+        if stopped():
+            request.session.pop("fix_flow", None)
+            return paused_message(request, "Changing settings")
         if "error" in params:
             request.session.pop("fix_flow", None)
             return message(request, "Nothing was changed",
@@ -719,6 +747,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
         cached = store.get_costs(tenant["id"])
         if not refresh and azure_costs.is_fresh(cached):
             return cached
+        if stopped():  # show what we have; don't use the app's Azure access
+            return cached or {"state": "error", "error": "Reading Azure costs is paused for maintenance."}
         try:
             data = azure_costs.fetch(arm_factory(tenant["id"]))
         except Exception as exc:  # a bad answer must not break the page
@@ -760,7 +790,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None,
 
     # ------------------------------------------------------------ Tenvaultix console (/admin)
 
-    add_console(app, store=store, render=render, message=message, flash=flash, csrf_ok=csrf_ok, is_ops=is_ops,
-                record=record, credential_check=credential_check, tenant_lookup=tenant_lookup)
+    add_console(app, store=store, settings=settings, render=render, message=message, flash=flash, csrf_ok=csrf_ok,
+                is_ops=is_ops, record=record, credential_check=credential_check, tenant_lookup=tenant_lookup)
 
     return app

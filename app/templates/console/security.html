@@ -1,0 +1,85 @@
+{% extends "console/base.html" %}
+{% block title %}Security{% endblock %}
+{% block heading %}Security{% endblock %}
+{% block content %}
+<div class="console-grid">
+  <section class="panel{{ ' stop-panel' if emergency }}" id="stop">
+    <header class="panel-head"><h2>Emergency stop</h2>{% if emergency %}<span class="chip tone-bad">on</span>{% else %}<span class="chip tone-good">off</span>{% endif %}</header>
+    <div class="pad">
+      <p>One switch that stops the app using anyone's Microsoft access: no scans, no new connections, no one-click fixes and no Azure cost reads. People can still sign in and read the reports already here; customers see “paused for maintenance”.</p>
+      {% if emergency %}
+      <p><strong>On</strong>, turned on by {{ emergency.by }}{% if emergency.at %}, {{ emergency.at|date }}{% endif %}.</p>
+      {% if emergency.source == 'server' %}
+      <p class="small muted">It's set on the server. Remove <span class="mono">TVX_EMERGENCY_STOP</span> from deploy/.env and run update.sh to turn it off.</p>
+      {% else %}
+      <form method="post" action="/admin/security/resume" class="inline-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="sr-only" for="resume">Type RESUME to confirm</label>
+        <input id="resume" name="confirm" type="text" placeholder="Type RESUME" autocomplete="off" required>
+        <button class="btn btn-primary btn-sm" type="submit">Turn everything back on</button>
+      </form>
+      {% endif %}
+      {% else %}
+      <form method="post" action="/admin/security/stop" class="inline-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="sr-only" for="stopword">Type STOP to confirm</label>
+        <input id="stopword" name="confirm" type="text" placeholder="Type STOP" autocomplete="off" required>
+        <button class="btn btn-danger btn-sm" type="submit">Emergency stop</button>
+      </form>
+      <p class="small muted section-gap">If the console itself may be compromised, set <span class="mono">TVX_EMERGENCY_STOP=on</span> in deploy/.env on the server and run update.sh, or stop the app: <span class="mono">sudo docker compose stop</span>. If the app's Microsoft secret may have leaked, also delete it in Entra (App registrations → Certificates &amp; secrets). docs/INCIDENT_RESPONSE.md has the full plan.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <header class="panel-head"><h2>Checks</h2></header>
+    <ul class="check-list">
+      {% for tone, title, text in checks %}<li class="{{ tone }}"><b>{{ title }}</b><span>{{ text }}</span></li>{% endfor %}
+    </ul>
+    <header class="panel-head"><h2>Check these yourself</h2></header>
+    <ul class="check-list manual">
+      <li><b>MFA on every key account</b><span>Your Microsoft admin, GitHub and Azure accounts, ideally passkeys or the Authenticator app.</span></li>
+      <li><b>App instance property lock</b><span>Entra → App registrations → your app → Authentication: on, so no one can add a secret to your app inside a customer's tenant.</span></li>
+      <li><b>Backups off the server</b><span>Azure Backup on the VM, or copies of deploy/backups somewhere else.</span></li>
+      <li><b>Cloudflare in front</b><span>A Cloudflare Tunnel hides the server and blocks floods (docs/DEPLOY_SERVER.md).</span></li>
+      <li><b>Private vulnerability reporting</b><span>GitHub → repository Settings → Code security: on, so people can report problems privately (SECURITY.md).</span></li>
+    </ul>
+  </section>
+</div>
+
+{% if denied %}
+<section class="panel">
+  <header class="panel-head"><h2>Recent attempts to open the console by people who aren't on the team</h2></header>
+  <div class="table-wrap">
+    <table class="table dense">
+      <thead><tr><th>When</th><th>Who</th><th>Details</th><th>From</th></tr></thead>
+      <tbody>{% for a in denied %}<tr><td class="small">{{ a.at|date }}</td><td>{{ a.actor }}</td><td class="small">{{ a.detail }}</td><td class="small mono">{{ a.ip }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="panel" id="activity">
+  <header class="panel-head"><h2>Activity</h2><span class="small muted">newest first, the last 200</span></header>
+  <div class="pad">
+    <div class="tabs">{% for key, (label, prefix) in activity_filters.items() %}<a class="{{ 'on' if show == key }}" href="/admin/security?show={{ key }}#activity">{{ label }}</a>{% endfor %}</div>
+  </div>
+  {% if activity %}
+  <div class="table-wrap">
+    <table class="table dense">
+      <thead><tr><th>When</th><th>Who</th><th>What</th><th>From</th></tr></thead>
+      <tbody>
+      {% for a in activity %}
+        <tr{% if a.action in ('console.denied', 'security.stop-on') %} class="row-alert"{% endif %}>
+          <td class="small">{{ a.at|date }}</td>
+          <td>{{ a.actor or 'system' }}</td>
+          <td><span class="chip">{{ a.action }}</span> <span class="small">{{ a.detail }}</span></td>
+          <td class="small mono">{{ a.ip }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted pad">Nothing yet.</p>{% endif %}
+</section>
+{% endblock %}

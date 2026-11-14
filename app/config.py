@@ -54,6 +54,7 @@ class Settings:
     version: str = ""  # commit the host deployed, if it tells us (Render does)
     ops_emails: tuple[str, ...] = ()  # Tenvaultix team members who may open /ops (TVX_OPS_EMAILS, comma-separated)
     scheduler: bool = False  # TVX_SCHEDULER=on: run due scans automatically inside the web app
+    emergency_stop: bool = False  # TVX_EMERGENCY_STOP=on: stop all use of Microsoft access (see safety.py)
     ops_tenant_id: str = ""  # the Tenvaultix tenant those people sign in from (TVX_OPS_TENANT_ID); both are required
 
     @property
@@ -109,4 +110,5 @@ def load_settings() -> Settings:
                          if e.strip(" '\"")),
         ops_tenant_id=_env("TVX_OPS_TENANT_ID").strip(" '\"").lower(),
         scheduler=_env("TVX_SCHEDULER").lower() in ("on", "1", "true", "yes"),
+        emergency_stop=_env("TVX_EMERGENCY_STOP").lower() in ("on", "1", "true", "yes"),
     )

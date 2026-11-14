@@ -111,6 +111,14 @@ CREATE TABLE IF NOT EXISTS options (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at TEXT NOT NULL,
+    actor TEXT,
+    action TEXT NOT NULL,
+    detail TEXT,
+    ip TEXT
+);
 CREATE TABLE IF NOT EXISTS azure_costs (
     tenant_id TEXT PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
     fetched_at TEXT NOT NULL,
@@ -118,6 +126,8 @@ CREATE TABLE IF NOT EXISTS azure_costs (
 );
 """
 KEEP_PROBLEMS = 500
+KEEP_AUDIT = 5000
+LOCAL_OPTIONS = ("scheduler_", "emergency_stop")  # this server's state: never exported or restored
 PLAN_FIELDS = ("name", "price_inr", "price_usd", "unit", "max_users", "scan_days", "tagline", "features", "public",
                "featured", "cta", "sort")
 DETAIL_FIELDS = ("company", "domain", "contact_name", "contact_email", "contact_phone", "gstin", "address", "notes")
@@ -234,6 +244,10 @@ class Store:
             return False
         with self._conn() as db:
             return db.execute("DELETE FROM plans WHERE id = ?", (plan_id,)).rowcount == 1
+
+    def delete_option(self, key: str) -> None:
+        with self._conn() as db:
+            db.execute("DELETE FROM options WHERE key = ?", (key,))
 
     def get_option(self, key: str, default: str = "") -> str:
         with self._conn() as db:
@@ -400,7 +414,7 @@ class Store:
                 "kind": "tenvaultix-console-backup", "version": 1, "exported_at": _iso(utcnow()),
                 "plans": [self._plan(r) for r in db.execute("SELECT * FROM plans ORDER BY sort")],
                 "options": {r["key"]: r["value"] for r in db.execute("SELECT * FROM options")
-                            if not r["key"].startswith("scheduler_")},
+                            if not r["key"].startswith(LOCAL_OPTIONS)},
                 "accounts": [dict(r) for r in db.execute("SELECT * FROM accounts")],
                 "licence_events": [dict(r) for r in db.execute("SELECT * FROM licence_events ORDER BY id")],
             }
@@ -417,9 +431,11 @@ class Store:
             db.execute("DELETE FROM plans")
             for plan in plans:
                 self._write_plan(db, plan, by)
-            db.execute("DELETE FROM options WHERE key NOT LIKE 'scheduler_%'")
+            for key in [r["key"] for r in db.execute("SELECT key FROM options")]:
+                if not key.startswith(LOCAL_OPTIONS):
+                    db.execute("DELETE FROM options WHERE key = ?", (key,))
             for key, value in (data.get("options") or {}).items():
-                if str(key).startswith("scheduler_"):
+                if str(key).startswith(LOCAL_OPTIONS):
                     continue
                 db.execute("INSERT INTO options (key, value) VALUES (?, ?)", (str(key)[:64], str(value)[:500]))
             db.execute("DELETE FROM accounts")
@@ -569,6 +585,23 @@ class Store:
                                   (tenant_id, limit))
             else:
                 rows = db.execute("SELECT * FROM problems ORDER BY id DESC LIMIT ?", (limit,))
+            return [dict(r) for r in rows]
+
+    # ---------------------------------------------------------------- activity log (who did what in the console)
+
+    def add_audit(self, actor: str | None, action: str, detail: str | None = None, ip: str | None = None) -> None:
+        with self._conn() as db:
+            db.execute("INSERT INTO audit (at, actor, action, detail, ip) VALUES (?, ?, ?, ?, ?)",
+                       (_iso(utcnow()), actor, action, (detail or "")[:500], (ip or "")[:64]))
+            db.execute("DELETE FROM audit WHERE id <= (SELECT MAX(id) FROM audit) - ?", (KEEP_AUDIT,))
+
+    def list_audit(self, limit: int = 200, prefix: str | None = None) -> list[dict]:
+        with self._conn() as db:
+            if prefix:
+                rows = db.execute("SELECT * FROM audit WHERE action LIKE ? ORDER BY id DESC LIMIT ?",
+                                  (prefix + "%", limit))
+            else:
+                rows = db.execute("SELECT * FROM audit ORDER BY id DESC LIMIT ?", (limit,))
             return [dict(r) for r in rows]
 
     # ---------------------------------------------------------------- Azure costs (cached)

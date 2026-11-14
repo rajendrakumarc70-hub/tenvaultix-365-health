@@ -133,6 +133,30 @@ registration, and suspend the Render service.
 
 ---
 
+## Recommended: hide the server behind Cloudflare
+
+With a Cloudflare Tunnel the server makes an outgoing connection to Cloudflare and nothing on the internet can
+reach it directly, so floods and scans hit Cloudflare instead. It works on the Azure VM too, and needs your
+domain's DNS on Cloudflare (free plan is fine).
+
+1. Create the tunnel as in Part 1B step 6 (public hostname `health.tenvaultix.com` → HTTP → `app:8000`).
+   If an A record for `health` already exists, delete it first; the tunnel adds its own.
+2. In `deploy/.env` set `COMPOSE_PROFILES=tunnel` and paste `TUNNEL_TOKEN`, then
+   `sudo bash /opt/tenvaultix/deploy/update.sh`.
+3. Check the site works on `https://health.tenvaultix.com`, then on the Azure VM → **Networking** → delete the
+   inbound rules for **HTTP (80)** and **HTTPS (443)**, and set the **SSH** rule's source to *My IP address*.
+4. In Cloudflare for the domain: **Security** → turn on **Bot Fight Mode**; keep the managed WAF rules on.
+
+## Recommended: backups off the server
+
+The nightly backup sits on the same server, so an attacker who gets in could delete it.
+
+- **Azure VM:** VM → **Backup** → enable (Recovery Services vault, daily policy). Soft delete is on by default
+  and keeps deleted backups for 14 days; for extra safety, turn on **immutability** for the vault.
+- **Hyper-V:** include the VM in your host's backups, or copy `/opt/tenvaultix/deploy/backups` to another
+  machine regularly (for example with `scp` from your PC).
+- Either way, also download a console backup (`/admin/backup`) after big changes and keep it somewhere private.
+
 ## Everyday tasks
 
 **Update to the latest version** (after changes are pushed to GitHub):
@@ -167,6 +191,9 @@ The console's **Errors** page (`/admin/errors`) shows failures in plain English.
 
 ## Keeping it safe
 
+- **Emergency stop:** console → Security, or `TVX_EMERGENCY_STOP=on` in `deploy/.env` + `update.sh`. It stops all
+  scans, connections, fixes and Azure reads while you handle an incident (see `INCIDENT_RESPONSE.md`).
+- Check the console's **Security** page now and then: it lists every console sign-in, change, export and restore.
 - Ubuntu installs security updates automatically. Reboot now and then: `sudo reboot` (the app starts by itself).
 - On Azure, limit SSH to your own IP: VM → **Networking** → the SSH rule → **Source**: *My IP address*.
 - `deploy/.env` holds the app's Microsoft secret: it's readable only by root and never goes to GitHub.

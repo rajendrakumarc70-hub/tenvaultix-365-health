@@ -28,12 +28,16 @@ LEASE_FOR = timedelta(minutes=30)
 INSTANCE = uuid.uuid4().hex[:12]
 
 
-def tick(store: Store, collect: Callable[[str], dict], owner: str = INSTANCE) -> int | None:
-    """Scan every company that's due. Returns how many scans ran, or None if another process holds the lease."""
-    if not store.take_lease(LEASE_KEY, owner, LEASE_FOR):
+def tick(store: Store, collect: Callable[[str], dict], owner: str = INSTANCE,
+         paused: Callable[[], bool] = lambda: False) -> int | None:
+    """Scan every company that's due. Returns how many scans ran, or None if the emergency stop is on or another
+    process holds the lease."""
+    if paused() or not store.take_lease(LEASE_KEY, owner, LEASE_FOR):
         return None
     ran = 0
     for tenant in store.list_tenants():
+        if paused():  # the emergency stop was turned on part-way through
+            break
         try:
             if scan_due(store, tenant):
                 run_scan(store, tenant["id"], collect)  # records its own failures
@@ -56,12 +60,12 @@ def last_run(store: Store) -> dict | None:
 
 
 def start(store: Store, collect: Callable[[str], dict], every: int = CHECK_EVERY,
-          first_wait: int = 30) -> threading.Thread:
+          first_wait: int = 30, paused: Callable[[], bool] = lambda: False) -> threading.Thread:
     def loop() -> None:
         time.sleep(first_wait)  # let the app finish starting
         while True:
             try:
-                tick(store, collect)
+                tick(store, collect, paused=paused)
             except Exception:
                 log.exception("Scheduler check failed")
             time.sleep(every)

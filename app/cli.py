@@ -96,6 +96,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Scan {scan['id']}: {scan['status']} score={scan['score']} {scan['error'] or ''}")
         return 0 if scan["status"] == "done" else 1
 
+    from .safety import stop_state
+    if stop_state(settings, store):
+        print("The emergency stop is on, so no scans run. Turn it off in the console (Security).", file=sys.stderr)
+        return 0
     failures = 0
     for tenant in store.list_tenants():
         if scan_due(store, tenant):

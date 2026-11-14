@@ -644,3 +644,19 @@ p.pad { margin: 0; }
   .console-grid { grid-template-columns: minmax(0, 1fr); }
   .facts { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---- console security */
+.stop-bar { background: var(--bad); color: #fff; border-radius: 10px; padding: 12px 16px; }
+.stop-bar a { color: #fff; text-decoration: underline; }
+.stop-panel { border-color: #f5c2c4; }
+.stop-panel .panel-head { background: var(--bad-bg); }
+.check-list { list-style: none; margin: 0; padding: 6px 16px 12px; }
+.check-list li { display: grid; gap: 2px; padding: 9px 0 9px 26px; border-bottom: 1px solid var(--line-2); position: relative; }
+.check-list li:last-child { border-bottom: 0; }
+.check-list li span { color: var(--muted); font-size: .88rem; }
+.check-list li::before { content: ""; position: absolute; left: 4px; top: 14px; width: 10px; height: 10px; border-radius: 50%; background: var(--na); }
+.check-list li.good::before { background: var(--good); }
+.check-list li.warn::before { background: var(--warn); }
+.check-list li.bad::before { background: var(--bad); }
+.check-list.manual li::before { border-radius: 2px; background: none; border: 2px solid var(--na); width: 8px; height: 8px; }
+.table tr.row-alert td { background: var(--bad-bg); }
