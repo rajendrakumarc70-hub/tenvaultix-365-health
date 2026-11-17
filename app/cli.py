@@ -8,6 +8,7 @@
   python -m app.cli restore <file> --yes     # replace the whole database with a backup ("-" reads stdin)
   python -m app.cli sign-out-everyone        # end every sign-in session now (for an incident)
   python -m app.cli prune                    # delete reports older than TVX_KEEP_REPORTS_DAYS now
+  python -m app.cli add-licences <plan> <count> [--months 12]   # put licences in stock for the console
 
 Backups are always a SQLite file, from SQLite or PostgreSQL alike. To move an existing SQLite database into
 PostgreSQL, set TVX_DATABASE_URL and run `restore` with the SQLite file (a backup, or the old health.db itself).
@@ -46,6 +47,10 @@ def main(argv: list[str] | None = None) -> int:
     restore.add_argument("--yes", action="store_true", help="confirm: everything now in the database is replaced")
     sub.add_parser("sign-out-everyone", help="end every sign-in session")
     sub.add_parser("prune", help="delete reports older than TVX_KEEP_REPORTS_DAYS (each company's latest is kept)")
+    stock = sub.add_parser("add-licences", help="put licences in stock, to assign to customers in the console")
+    stock.add_argument("plan", help="a package id from the console's Pricing page, e.g. business")
+    stock.add_argument("count", type=int)
+    stock.add_argument("--months", type=int, default=12, help="how long each runs once assigned (default 12)")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -86,6 +91,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "sign-out-everyone":
         ended = store.end_all_sessions()
         print(f"Ended {ended} sign-in session{'s' if ended != 1 else ''}. Everyone must sign in again.")
+        return 0
+
+    if args.command == "add-licences":
+        if args.plan == "trial" or not store.get_plan(args.plan):
+            print(f"No package {args.plan}. Packages: "
+                  f"{', '.join(p['id'] for p in store.list_plans() if p['id'] != 'trial')}", file=sys.stderr)
+            return 1
+        if not 1 <= args.count <= 100 or not 1 <= args.months <= 36:
+            print("Count must be 1 to 100 and --months 1 to 36.", file=sys.stderr)
+            return 1
+        for code in store.add_licences(args.plan, args.count, args.months, "command line"):
+            print(code)
         return 0
 
     if args.command == "prune":

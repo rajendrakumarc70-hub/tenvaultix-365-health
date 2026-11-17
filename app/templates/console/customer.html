@@ -14,7 +14,26 @@
 
 <div class="console-grid">
   <section class="panel" id="licence">
-    <header class="panel-head"><h2>Licence</h2></header>
+    <header class="panel-head"><h2>Licence</h2><a href="/admin/licences">Licence stock</a></header>
+    <div class="pad stock-pick">
+      {% if licence %}
+      <p><span class="licence-key">{{ licence.code }}</span> · {{ c.plan_name }}, {{ licence.months }} month{{ 's' if licence.months != 1 }}{% if licence.seats %}, {{ '{:,}'.format(licence.seats) }} seats{% endif %}<br>
+        <span class="small muted">Assigned {{ licence.assigned_at|date }} by {{ licence.assigned_by }}</span></p>
+      <form method="post" action="/admin/licences/{{ licence.id }}/unassign"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="back" value="customer"><button class="btn btn-ghost btn-sm" type="submit">Take the licence back</button></form>
+      {% endif %}
+      {% if stock %}
+      <div class="row-form">
+        {% for s in stock %}
+        <form method="post" action="/admin/licences/{{ s.id }}/assign">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="back" value="customer"><input type="hidden" name="tenant_id" value="{{ c.id }}">
+          <button class="btn {{ 'btn-ghost' if licence else 'btn-primary' }} btn-sm" type="submit">{{ 'Switch to' if licence else 'Assign' }} {{ s.plan_name }} · {{ s.months }} mo{% if s.seats %} · {{ s.seats }} seats{% endif %} <span class="small">({{ s.count }} left)</span></button>
+        </form>
+        {% endfor %}
+      </div>
+      {% elif not licence %}
+      <p class="small muted">No licences in stock. <a href="/admin/licences#add">Add some</a>, or set the licence by hand below.</p>
+      {% endif %}
+    </div>
     <form class="pad" method="post" action="/admin/customers/{{ c.id }}/licence">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <div class="form-grid">

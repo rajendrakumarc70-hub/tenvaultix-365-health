@@ -9,6 +9,7 @@
   <div class="stat"><span>Customers</span><b>{{ stats.customers }}</b><small>{{ stats.connected }} connected</small></div>
   <div class="stat"><span>Paying</span><b>{{ stats.paying }}</b><small>with a price set</small></div>
   <div class="stat"><span>On trial</span><b>{{ stats.trials }}</b><small>free trials running</small></div>
+  <div class="stat"><span>Licences in stock</span><b>{{ stats.licences }}</b><small><a href="/admin/licences">assign to customers</a></small></div>
   <div class="stat{{ ' alert' if stats.attention }}"><span>Needs attention</span><b>{{ stats.attention }}</b><small><a href="/admin/customers?show=attention">see the list</a></small></div>
 </div>
 

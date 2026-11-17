@@ -27,6 +27,10 @@ GSTIN = re.compile(r"^[0-9]{2}[A-Z0-9]{13}$")
 UNITS = ["month", "tenant/month", "user/month", "year"]
 MAX_BACKUP = 2 * 1024 * 1024
 CONSOLE_SIGN_IN = timedelta(hours=1)  # the console asks for a fresh Microsoft sign-in after this
+LICENCE_MONTHS = (1, 3, 6, 12, 24, 36)  # how long a licence can run once it's assigned
+LICENCE_FILTERS = {"all": "All", "available": "In stock", "assigned": "Assigned"}
+TEST_LICENCES = 5  # "Add test licences" puts this many of each package in stock
+MAX_PICK = 300  # above this many customers, licences are assigned from the customer's own page
 FILTERS = {
     "all": "All", "paying": "Paying", "trial": "On trial", "attention": "Needs attention",
     "ended": "Ended or suspended", "waiting": "Not connected yet",
@@ -112,7 +116,8 @@ def add_console(app: FastAPI, *, store: Store, settings, render: Callable, messa
 
     def customers() -> list[dict]:
         plans = plans_by_id()
-        return [enrich(r, plans) for r in store.list_customers()]
+        codes = store.assigned_licence_codes()
+        return [{**enrich(r, plans), "licence_code": codes.get(r["id"])} for r in store.list_customers()]
 
     def needs_attention(c: dict) -> bool:
         return bool(c["reasons"])
@@ -209,6 +214,7 @@ def add_console(app: FastAPI, *, store: Store, settings, render: Callable, messa
         for c in rows:
             by_plan[c["plan_name"]] = by_plan.get(c["plan_name"], 0) + 1
         attention = [c for c in rows if needs_attention(c)][:12]
+        stats["licences"] = sum(s["available"] for s in store.licence_stock().values())
         return page(request, "overview.html", "overview", stats=stats, attention=attention,
                     by_plan=sorted(by_plan.items(), key=lambda kv: -kv[1]),
                     recent=rows[:6], errors=len(store.list_problems(limit=500)))
@@ -284,6 +290,7 @@ def add_console(app: FastAPI, *, store: Store, settings, render: Callable, messa
                            actions=[("All customers", "/admin/customers")])
         tenant = store.get_tenant(tid)
         return page(request, "customer.html", "customers", c=c, plans=store.list_plans(),
+                    licence=store.licence_for(tid), stock=stock_choices(),
                     events=store.licence_events(tid), members=store.list_members(tid) if tenant else [],
                     scans=store.list_scans(tid, limit=5) if tenant else [],
                     problems=problems.grouped(store.list_problems(limit=50, tenant_id=tid))[:5],
@@ -373,6 +380,128 @@ def add_console(app: FastAPI, *, store: Store, settings, render: Callable, messa
         name = f"tenvaultix-customers-{utcnow():%Y-%m-%d}.csv"
         return Response(out.getvalue(), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    # ------------------------------------------------------------ licence stock
+
+    def sellable_plans() -> list[dict]:
+        return [p for p in store.list_plans() if p["id"] != "trial"]
+
+    def stock_choices() -> list[dict]:
+        """Licences in stock, one choice per package, term and seats, with how many are left of each."""
+        plans, groups = plans_by_id(), {}
+        for lic in store.list_licences(status="available"):
+            key = (lic["plan"], lic["months"], lic["seats"])
+            if key not in groups:
+                plan = plans.get(lic["plan"]) or {}
+                groups[key] = {"id": lic["id"], "plan": lic["plan"], "plan_name": plan.get("name", lic["plan"]),
+                               "months": lic["months"], "seats": lic["seats"], "count": 0}
+            groups[key]["count"] += 1
+        return list(groups.values())
+
+    def back_to(back: str, tid: str | None) -> str:
+        if back == "customer" and tid and TENANT_ID.match(tid):
+            return f"/admin/customers/{tid}#licence"
+        return "/admin/licences"
+
+    @app.get("/admin/licences")
+    def licences(request: Request, show: str = "all", plan: str = ""):
+        user, stop = team(request, "/admin/licences")
+        if stop:
+            return stop
+        show = show if show in LICENCE_FILTERS else "all"
+        plans = plans_by_id()
+        plan = plan if plan in plans else ""
+        everyone = customers()
+        return page(request, "licences.html", "licences",
+                    rows=store.list_licences(status=None if show == "all" else show, plan=plan or None),
+                    stock=store.licence_stock(), plans=plans, sellable=sellable_plans(), show=show, plan=plan,
+                    filters=LICENCE_FILTERS, months=LICENCE_MONTHS, test_count=TEST_LICENCES,
+                    signed_up=[c for c in everyone if c["connected"]],
+                    waiting=[c for c in everyone if not c["connected"]], pick_customer=len(everyone) <= MAX_PICK)
+
+    @app.post("/admin/licences/new")
+    def licences_new(request: Request, csrf: str = Form(""), plan: str = Form(""), count: str = Form("1"),
+                     months: str = Form("12"), seats: str = Form(""), note: str = Form("")):
+        user = team_post(request, csrf)
+        if not user:
+            return RedirectResponse("/admin", status_code=303)
+        package = store.get_plan(plan) if plan != "trial" else None
+        try:
+            if not package:
+                raise FormError("Choose a package.")
+            how_many = licensing.whole(count, "How many", 1, 100)
+            if not how_many:
+                raise FormError("How many: enter a number from 1 to 100.")
+            if not months.isdigit() or int(months) not in LICENCE_MONTHS:
+                raise FormError("Choose how long each licence runs.")
+            seat_limit = licensing.whole(seats, "Seats", 1, 100_000)
+        except FormError as exc:
+            flash(request, str(exc), "error")
+            return RedirectResponse("/admin/licences#add", status_code=303)
+        store.add_licences(plan, how_many, int(months), user["email"], seat_limit, licensing.short(note, 120))
+        what = f"{how_many} {package['name']} licence{'s' if how_many != 1 else ''}, {months} months each"
+        audit(request, user["email"], "licence.stock-add", f"Added {what}")
+        flash(request, f"Added {what}.", "good")
+        return RedirectResponse(f"/admin/licences?plan={plan}", status_code=303)
+
+    @app.post("/admin/licences/test")
+    def licences_test(request: Request, csrf: str = Form("")):
+        user = team_post(request, csrf)
+        if not user:
+            return RedirectResponse("/admin", status_code=303)
+        names = []
+        for package in sellable_plans():
+            store.add_licences(package["id"], TEST_LICENCES, 12, user["email"], note="Test licence")
+            names.append(package["name"])
+        what = f"{TEST_LICENCES} test licences of each package ({', '.join(names)}), 12 months each"
+        audit(request, user["email"], "licence.stock-add", f"Added {what}")
+        flash(request, f"Added {what}.", "good")
+        return RedirectResponse("/admin/licences", status_code=303)
+
+    @app.post("/admin/licences/{licence_id}/assign")
+    def licence_assign(request: Request, licence_id: int, csrf: str = Form(""), tenant_id: str = Form(""),
+                       back: str = Form("")):
+        user = team_post(request, csrf)
+        if not user:
+            return RedirectResponse("/admin", status_code=303)
+        tid = tenant_id.strip().lower()
+        c = customer(tid) if TENANT_ID.match(tid) else None
+        if not c:
+            flash(request, "Choose the customer to give the licence to.", "error")
+            return RedirectResponse(back_to(back, None), status_code=303)
+        result = store.assign_licence(licence_id, tid, user["email"])
+        if not result:
+            flash(request, "That licence is no longer in stock. Pick another one.", "warn")
+        else:
+            audit(request, user["email"], "licence.assign", f"{result['code']} to {c['name'] or tid} ({tid})")
+            flash(request, f"{result['summary']} for {c['name'] or tid}.", "good")
+        return RedirectResponse(back_to(back, tid), status_code=303)
+
+    @app.post("/admin/licences/{licence_id}/unassign")
+    def licence_unassign(request: Request, licence_id: int, csrf: str = Form(""), back: str = Form("")):
+        user = team_post(request, csrf)
+        if not user:
+            return RedirectResponse("/admin", status_code=303)
+        result = store.unassign_licence(licence_id, user["email"])
+        if not result:
+            flash(request, "That licence isn't assigned to anyone.", "warn")
+            return RedirectResponse(back_to(back, None), status_code=303)
+        audit(request, user["email"], "licence.unassign", f"{result['code']} taken back from {result['tenant_id']}")
+        flash(request, f"{result['summary']}.", "good")
+        return RedirectResponse(back_to(back, result["tenant_id"]), status_code=303)
+
+    @app.post("/admin/licences/{licence_id}/delete")
+    def licence_delete(request: Request, licence_id: int, csrf: str = Form("")):
+        user = team_post(request, csrf)
+        if not user:
+            return RedirectResponse("/admin", status_code=303)
+        code = store.remove_licence(licence_id)
+        if code:
+            audit(request, user["email"], "licence.remove", f"Removed {code} from stock")
+            flash(request, f"Removed {code}.", "good")
+        else:
+            flash(request, "Only licences in stock can be removed. Take it back from the customer first.", "warn")
+        return RedirectResponse("/admin/licences", status_code=303)
 
     # ------------------------------------------------------------ pricing
 
@@ -610,9 +739,9 @@ def add_console(app: FastAPI, *, store: Store, settings, render: Callable, messa
         except (ValueError, UnicodeDecodeError) as exc:
             flash(request, f"Nothing was restored: {exc}", "error")
             return RedirectResponse("/admin/backup", status_code=303)
-        audit(request, user["email"], "data.restore",
-              f"Restored {counts['plans']} plans and {counts['accounts']} customer records")
-        flash(request, f"Restored {counts['plans']} plans and {counts['accounts']} customer records.", "good")
+        what = f"{counts['plans']} plans, {counts['accounts']} customer records and {counts['licences']} licences"
+        audit(request, user["email"], "data.restore", f"Restored {what}")
+        flash(request, f"Restored {what}.", "good")
         return RedirectResponse("/admin", status_code=303)
 
 

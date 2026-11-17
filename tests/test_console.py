@@ -105,7 +105,7 @@ def test_backup_round_trip(tmp_path):
     store.set_option("trial_days", "21")
     data = json.loads(json.dumps(store.export_admin()))
     other = Store(tmp_path / "b.db")
-    assert other.import_admin(data, "ada") == {"plans": 4, "accounts": 1}
+    assert other.import_admin(data, "ada") == {"plans": 4, "accounts": 1, "licences": 0}
     assert other.get_account(NEWCO)["price_inr"] == 1500 and other.trial_days() == 21
     assert other.licence_events(NEWCO)[0]["summary"] == "Customer added"
     with pytest.raises(ValueError):
@@ -315,7 +315,7 @@ def test_backup_download_and_restore(tmp_path):
     assert "Type RESTORE" in page and w.store.get_account(NEWCO) is None
     page = ada.post("/admin/restore", data={"csrf": t, "confirm": "RESTORE"}, files=files,
                     follow_redirects=True).text
-    assert "Restored 4 plans and 1 customer records" in page and w.store.get_account(NEWCO)["plan"] == "essentials"
+    assert "Restored 4 plans, 1 customer records and 0 licences" in page and w.store.get_account(NEWCO)["plan"] == "essentials"
     bad = {"backup_file": ("x.json", b"{not json", "application/json")}
     page = ada.post("/admin/restore", data={"csrf": t, "confirm": "RESTORE"}, files=bad, follow_redirects=True).text
     assert "Nothing was restored" in page

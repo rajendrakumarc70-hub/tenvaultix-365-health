@@ -1,0 +1,105 @@
+{% extends "console/base.html" %}
+{% block title %}Licences{% endblock %}
+{% block heading %}Licences{% endblock %}
+{% block actions %}<a class="btn btn-primary btn-sm" href="#add">Add licences</a>{% endblock %}
+{% block content %}
+<p class="muted">Licences in stock can be given to any customer who has signed up. The customer's plan, seats and end date follow the licence; taking it back puts it in stock again and returns them to the free trial.</p>
+
+<div class="stat-row">
+  {% for p in sellable %}{% set s = stock.get(p.id, {}) %}
+  <a class="stat stat-link{{ ' on' if plan == p.id }}" href="/admin/licences?plan={{ p.id }}">
+    <span>{{ p.name }}</span><b>{{ s.available or 0 }}</b><small>in stock · {{ s.assigned or 0 }} assigned · {{ s.total or 0 }} in all</small>
+  </a>
+  {% endfor %}
+</div>
+
+{% if not stock %}
+<section class="panel">
+  <div class="pad">
+    <h2 class="h3">No licences yet</h2>
+    <p class="muted">Add licences below, or start with a test set: {{ test_count }} licences of each package ({{ sellable|map(attribute='name')|join(', ') }}), each running 12 months once assigned.</p>
+    <form method="post" action="/admin/licences/test"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-primary btn-sm" type="submit">Add {{ test_count }} test licences of each package</button></form>
+  </div>
+</section>
+{% else %}
+<form class="toolbar" method="get" action="/admin/licences">
+  <div class="tabs" role="tablist">
+    {% for key, label in filters.items() %}<a role="tab" class="{{ 'on' if show == key }}" aria-selected="{{ 'true' if show == key else 'false' }}" href="/admin/licences?show={{ key }}{% if plan %}&amp;plan={{ plan }}{% endif %}">{{ label }}</a>{% endfor %}
+  </div>
+  <input type="hidden" name="show" value="{{ show }}">
+  <label class="sr-only" for="plan-filter">Package</label>
+  <select id="plan-filter" name="plan"><option value="">Every package</option>{% for p in sellable %}<option value="{{ p.id }}"{% if plan == p.id %} selected{% endif %}>{{ p.name }}</option>{% endfor %}</select>
+  <button class="btn btn-ghost btn-sm" type="submit">Show</button>
+</form>
+
+<section class="panel">
+  {% if rows %}
+  <div class="table-wrap">
+    <table class="table dense">
+      <thead><tr><th>Licence</th><th>Package</th><th>Runs for</th><th>Customer</th><th></th></tr></thead>
+      <tbody>
+      {% for l in rows %}
+        <tr>
+          <td><span class="licence-key">{{ l.code }}</span>{% if l.note %}<br><span class="small muted">{{ l.note }}</span>{% endif %}</td>
+          <td>{{ plans[l.plan].name if l.plan in plans else l.plan }}{% if l.seats %}<br><span class="small muted">{{ '{:,}'.format(l.seats) }} seats</span>{% endif %}</td>
+          <td class="nowrap">{{ l.months }} month{{ 's' if l.months != 1 }}</td>
+          <td>
+            {% if l.status == 'assigned' %}
+              <span class="chip tone-good">assigned</span> <a href="/admin/customers/{{ l.tenant_id }}">{{ l.customer or l.tenant_id }}</a>{% if not l.connected %} <span class="chip tone-na">not connected</span>{% endif %}
+              <br><span class="small muted">{{ l.assigned_at|date }} by {{ l.assigned_by }}</span>
+            {% elif pick_customer and (signed_up or waiting) %}
+              <form class="row-form" method="post" action="/admin/licences/{{ l.id }}/assign">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <label class="sr-only" for="give-{{ l.id }}">Give {{ l.code }} to</label>
+                <select id="give-{{ l.id }}" name="tenant_id" required>
+                  <option value="">Choose a customer…</option>
+                  {% if signed_up %}<optgroup label="Signed up">{% for c in signed_up %}<option value="{{ c.id }}">{{ c.name or c.id }}{% if c.licence_code %} (has {{ c.licence_code }}){% endif %}</option>{% endfor %}</optgroup>{% endif %}
+                  {% if waiting %}<optgroup label="Not connected yet">{% for c in waiting %}<option value="{{ c.id }}">{{ c.name or c.id }}</option>{% endfor %}</optgroup>{% endif %}
+                </select>
+                <button class="btn btn-primary btn-sm" type="submit">Assign</button>
+              </form>
+            {% elif pick_customer %}
+              <span class="small muted">No customers yet: they appear when a company signs up.</span>
+            {% else %}
+              <span class="small muted">In stock: assign it from the customer's page.</span>
+            {% endif %}
+          </td>
+          <td class="num">
+            {% if l.status == 'assigned' %}
+            <form method="post" action="/admin/licences/{{ l.id }}/unassign"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-ghost btn-sm" type="submit">Take back</button></form>
+            {% else %}
+            <form method="post" action="/admin/licences/{{ l.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-ghost btn-sm" type="submit">Remove</button></form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted pad">No licences match. <a href="/admin/licences">Show all</a></p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="panel" id="add">
+  <header class="panel-head"><h2>Add licences to stock</h2></header>
+  <form class="pad" method="post" action="/admin/licences/new">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="form-grid">
+      <label class="field"><span>Package</span><select name="plan" required>{% for p in sellable %}<option value="{{ p.id }}"{% if plan == p.id %} selected{% endif %}>{{ p.name }}{% if p.price_inr %} · {{ p.price_inr|price('INR') }}/{{ p.unit }}{% endif %}</option>{% endfor %}</select></label>
+      <label class="field"><span>How many</span><input type="number" name="count" min="1" max="100" value="5" required></label>
+      <label class="field"><span>Runs for</span><select name="months">{% for m in months %}<option value="{{ m }}"{% if m == 12 %} selected{% endif %}>{{ m }} month{{ 's' if m != 1 }}</option>{% endfor %}</select><small>Counted from the day it's assigned.</small></label>
+      <label class="field"><span>Seats</span><input type="number" name="seats" min="1" placeholder="package's limit"></label>
+      <label class="field wide"><span>Note (only your team sees it)</span><input type="text" name="note" maxlength="120" placeholder="e.g. Partner bundle, invoice 1042"></label>
+    </div>
+    <div class="btn-row form-actions"><button class="btn btn-primary btn-sm" type="submit">Add to stock</button></div>
+  </form>
+  {% if stock %}
+  <div class="pad quick">
+    <span class="small muted">Testing:</span>
+    <form method="post" action="/admin/licences/test"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-ghost btn-sm" type="submit">Add {{ test_count }} more test licences of each package</button></form>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -148,6 +148,21 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS sessions_by_user ON sessions(tenant_id, user_oid);
 CREATE INDEX IF NOT EXISTS sessions_by_expiry ON sessions(expires_at);
+CREATE TABLE IF NOT EXISTS licences (
+    id {id},
+    code TEXT NOT NULL UNIQUE,            -- the licence key shown in the console, e.g. TVX-BUS-7KQ2-M9XD
+    plan TEXT NOT NULL,                   -- the package it gives
+    months INTEGER NOT NULL DEFAULT 12,   -- how long it runs from the day it's assigned
+    seats INTEGER,                        -- user limit; empty = the package's limit
+    note TEXT,
+    status TEXT NOT NULL DEFAULT 'available',  -- available | assigned
+    tenant_id TEXT,                       -- the customer it's assigned to
+    assigned_at TEXT,
+    assigned_by TEXT,
+    created_at TEXT NOT NULL,
+    created_by TEXT
+);
+CREATE INDEX IF NOT EXISTS licences_by_tenant ON licences(tenant_id);
 CREATE TABLE IF NOT EXISTS leases (
     name TEXT PRIMARY KEY,
     owner TEXT NOT NULL,
@@ -170,9 +185,12 @@ STALE_SCAN = timedelta(minutes=30)
 SESSION_TOUCH = timedelta(minutes=5)  # how often a session's "last seen" time is written
 
 # Full backups and copies between databases: parents before children. Sessions and leases are never copied.
-TABLES = ("plans", "options", "accounts", "licence_events", "tenants", "members", "scans", "fixes", "problems",
-          "audit", "azure_costs")
-SERIAL_TABLES = ("scans", "fixes", "problems", "licence_events", "audit")
+TABLES = ("plans", "options", "accounts", "licence_events", "licences", "tenants", "members", "scans", "fixes",
+          "problems", "audit", "azure_costs")
+SERIAL_TABLES = ("scans", "fixes", "problems", "licence_events", "audit", "licences")
+LICENCE_COLUMNS = ("code", "plan", "months", "seats", "note", "status", "tenant_id", "assigned_at", "assigned_by",
+                   "created_at", "created_by")
+KEY_LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I/L: easy to read out on the phone
 SCHEMA_NAME = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
 
 
@@ -540,16 +558,131 @@ class Store:
 
     def save_licence(self, tenant_id: str, licence: dict, by: str, summary: str) -> None:
         """Set a customer's licence; the connected tenant's plan follows it. `summary` goes in the history."""
-        fields = [f for f in LICENCE_FIELDS if f in licence]
         with self._conn() as db:
-            self._ensure_account(db, tenant_id, by)
-            db.execute(f"UPDATE accounts SET {', '.join(f + ' = ?' for f in fields)}, updated_at = ?, updated_by = ? "
-                       "WHERE tenant_id = ?", (*[licence[f] for f in fields], _iso(utcnow()), by, tenant_id))
-            if licence.get("plan"):
-                db.execute("UPDATE tenants SET plan = ? WHERE id = ?", (licence["plan"], tenant_id))
-            if summary:
-                db.execute("INSERT INTO licence_events (tenant_id, at, by_email, summary) VALUES (?, ?, ?, ?)",
-                           (tenant_id, _iso(utcnow()), by, summary))
+            self._save_licence(db, tenant_id, licence, by, summary)
+
+    def _save_licence(self, db: _Conn, tenant_id: str, licence: dict, by: str, summary: str) -> None:
+        fields = [f for f in LICENCE_FIELDS if f in licence]
+        self._ensure_account(db, tenant_id, by)
+        db.execute(f"UPDATE accounts SET {', '.join(f + ' = ?' for f in fields)}, updated_at = ?, updated_by = ? "
+                   "WHERE tenant_id = ?", (*[licence[f] for f in fields], _iso(utcnow()), by, tenant_id))
+        if licence.get("plan"):
+            db.execute("UPDATE tenants SET plan = ? WHERE id = ?", (licence["plan"], tenant_id))
+        if summary:
+            db.execute("INSERT INTO licence_events (tenant_id, at, by_email, summary) VALUES (?, ?, ?, ?)",
+                       (tenant_id, _iso(utcnow()), by, summary))
+
+    # ---------------------------------------------------------------- licence stock (keys assigned to customers)
+
+    @staticmethod
+    def _new_code(plan: str) -> str:
+        part = lambda: "".join(secrets.choice(KEY_LETTERS) for _ in range(4))  # noqa: E731
+        return f"TVX-{re.sub(r'[^A-Z0-9]', '', plan.upper())[:3] or 'LIC'}-{part()}-{part()}"
+
+    def add_licences(self, plan: str, count: int, months: int, by: str, seats: int | None = None,
+                     note: str | None = None) -> list[str]:
+        """Put `count` new licences for `plan` in stock. Returns their keys."""
+        codes, now = [], _iso(utcnow())
+        with self._conn() as db:
+            taken = {r["code"] for r in db.all("SELECT code FROM licences")}
+            while len(codes) < count:
+                code = self._new_code(plan)
+                if code not in taken:
+                    taken.add(code)
+                    codes.append(code)
+            db.executemany("INSERT INTO licences (code, plan, months, seats, note, status, created_at, created_by) "
+                           "VALUES (?, ?, ?, ?, ?, 'available', ?, ?)",
+                           [(code, plan, months, seats, note, now, by) for code in codes])
+        return codes
+
+    _LICENCE_SELECT = ("SELECT l.*, COALESCE(t.name, a.company) AS customer, t.id IS NOT NULL AS connected "
+                       "FROM licences l LEFT JOIN tenants t ON t.id = l.tenant_id "
+                       "LEFT JOIN accounts a ON a.tenant_id = l.tenant_id")
+
+    def list_licences(self, status: str | None = None, plan: str | None = None) -> list[dict]:
+        where, args = [], []
+        if status:
+            where.append("l.status = ?")
+            args.append(status)
+        if plan:
+            where.append("l.plan = ?")
+            args.append(plan)
+        sql = self._LICENCE_SELECT + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY l.plan, l.id"
+        with self._conn() as db:
+            return db.all(sql, tuple(args))
+
+    def get_licence(self, licence_id: int) -> dict | None:
+        with self._conn() as db:
+            return db.one(self._LICENCE_SELECT + " WHERE l.id = ?", (licence_id,))
+
+    def licence_for(self, tenant_id: str) -> dict | None:
+        """The licence assigned to this customer, if any."""
+        with self._conn() as db:
+            return db.one(self._LICENCE_SELECT + " WHERE l.tenant_id = ? AND l.status = 'assigned'", (tenant_id,))
+
+    def assigned_licence_codes(self) -> dict[str, str]:
+        with self._conn() as db:
+            return {r["tenant_id"]: r["code"] for r in
+                    db.all("SELECT tenant_id, code FROM licences WHERE status = 'assigned'")}
+
+    def licence_stock(self) -> dict[str, dict]:
+        """Per package: how many licences in total, still available and assigned."""
+        with self._conn() as db:
+            rows = db.all("SELECT plan, status, COUNT(*) AS n FROM licences GROUP BY plan, status")
+        stock: dict[str, dict] = {}
+        for r in rows:
+            entry = stock.setdefault(r["plan"], {"total": 0, "available": 0, "assigned": 0})
+            entry[r["status"]] = entry.get(r["status"], 0) + r["n"]
+            entry["total"] += r["n"]
+        return stock
+
+    def assign_licence(self, licence_id: int, tenant_id: str, by: str) -> dict | None:
+        """Give a licence from stock to a customer: their plan, seats and end date follow it. A licence the customer
+        already had goes back into stock. None if the licence is gone or no longer available."""
+        now = utcnow()
+        with self._conn() as db:
+            lic = db.one("SELECT * FROM licences WHERE id = ?", (licence_id,))
+            if not lic or db.execute(
+                    "UPDATE licences SET status = 'assigned', tenant_id = ?, assigned_at = ?, assigned_by = ? "
+                    "WHERE id = ? AND status = 'available'", (tenant_id, _iso(now), by, licence_id)).rowcount != 1:
+                return None
+            released = [r["code"] for r in db.all(
+                "SELECT code FROM licences WHERE tenant_id = ? AND status = 'assigned' AND id != ?",
+                (tenant_id, licence_id))]
+            db.execute("UPDATE licences SET status = 'available', tenant_id = NULL, assigned_at = NULL, "
+                       "assigned_by = NULL WHERE tenant_id = ? AND status = 'assigned' AND id != ?",
+                       (tenant_id, licence_id))
+            ends = licensing.add_months(now.date(), lic["months"]).isoformat()
+            plan = db.one("SELECT name FROM plans WHERE id = ?", (lic["plan"],))
+            summary = (f"Licence {lic['code']} assigned: {plan['name'] if plan else lic['plan']}, "
+                       f"{lic['months']} month{'s' if lic['months'] != 1 else ''}, valid until {ends}"
+                       + (f", {lic['seats']:,} seats" if lic["seats"] else "")
+                       + (f" (replaces {', '.join(released)})" if released else ""))
+            self._save_licence(db, tenant_id, {"plan": lic["plan"], "status": "active", "paid_until": ends,
+                                               "seats": lic["seats"]}, by, summary)
+        return {"code": lic["code"], "plan": lic["plan"], "paid_until": ends, "released": released,
+                "summary": summary}
+
+    def unassign_licence(self, licence_id: int, by: str) -> dict | None:
+        """Take a licence back into stock. The customer goes back to the free trial (ended, if it's over)."""
+        with self._conn() as db:
+            lic = db.one("SELECT * FROM licences WHERE id = ? AND status = 'assigned'", (licence_id,))
+            if not lic:
+                return None
+            db.execute("UPDATE licences SET status = 'available', tenant_id = NULL, assigned_at = NULL, "
+                       "assigned_by = NULL WHERE id = ?", (licence_id,))
+            summary = f"Licence {lic['code']} taken back into stock; back on the free trial"
+            self._save_licence(db, lic["tenant_id"], {"plan": "trial", "paid_until": None, "seats": None}, by,
+                               summary)
+        return {"code": lic["code"], "tenant_id": lic["tenant_id"], "summary": summary}
+
+    def remove_licence(self, licence_id: int) -> str | None:
+        """Delete a licence that's still in stock (an assigned one must be taken back first)."""
+        with self._conn() as db:
+            lic = db.one("SELECT code FROM licences WHERE id = ? AND status = 'available'", (licence_id,))
+            if lic:
+                db.execute("DELETE FROM licences WHERE id = ? AND status = 'available'", (licence_id,))
+        return lic["code"] if lic else None
 
     def licence_events(self, tenant_id: str, limit: int = 50) -> list[dict]:
         with self._conn() as db:
@@ -674,6 +807,7 @@ class Store:
                             if not r["key"].startswith(LOCAL_OPTIONS)},
                 "accounts": db.all("SELECT * FROM accounts"),
                 "licence_events": db.all("SELECT * FROM licence_events ORDER BY id"),
+                "licences": db.all(f"SELECT {', '.join(LICENCE_COLUMNS)} FROM licences ORDER BY id"),
             }
 
     def import_admin(self, data: dict, by: str) -> dict:
@@ -714,7 +848,20 @@ class Store:
                     db.execute("INSERT INTO licence_events (tenant_id, at, by_email, summary) VALUES (?, ?, ?, ?)",
                                (ev["tenant_id"], ev.get("at") or _iso(utcnow()), ev.get("by_email"),
                                 str(ev["summary"])[:500]))
-        return {"plans": len(plans), "accounts": len(data.get("accounts") or [])}
+            if "licences" in data:  # backups made before licence stock existed leave the stock as it is
+                db.execute("DELETE FROM licences")
+                for lic in data.get("licences") or []:
+                    if not (lic.get("code") and lic.get("plan")):
+                        continue
+                    row = {c: lic.get(c) for c in LICENCE_COLUMNS}
+                    row["status"] = "assigned" if row["status"] == "assigned" and row["tenant_id"] else "available"
+                    row["months"] = int(row["months"] or 12)
+                    row["created_at"] = row["created_at"] or _iso(utcnow())
+                    db.execute(f"INSERT INTO licences ({', '.join(LICENCE_COLUMNS)}) VALUES "
+                               f"({', '.join('?' for _ in LICENCE_COLUMNS)}) ON CONFLICT (code) DO NOTHING",
+                               [row[c] for c in LICENCE_COLUMNS])
+        return {"plans": len(plans), "accounts": len(data.get("accounts") or []),
+                "licences": len(data.get("licences") or [])}
 
     # ---------------------------------------------------------------- members
 
