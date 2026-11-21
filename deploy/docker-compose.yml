@@ -83,7 +83,7 @@ services:
       - app
 
   tunnel:
-    image: cloudflare/cloudflared:2026.10.7
+    image: cloudflare/cloudflared:2026.11.1
     profiles: ["tunnel"]
     restart: unless-stopped
     command: tunnel --no-autoupdate run
