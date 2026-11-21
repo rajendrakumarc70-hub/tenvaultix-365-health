@@ -12,4 +12,4 @@ psycopg-pool==3.3.3
 
 # tests
 pytest==9.2.0
-httpx2==2.13.1
+httpx2==2.16.2
